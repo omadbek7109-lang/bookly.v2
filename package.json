@@ -1,0 +1,36 @@
+{
+  "name": "bookly",
+  "version": "2.0.0-phase1",
+  "private": true,
+  "description": "Bookly 2.0 — AI yordamida elektron kitob yaratish platformasi (mobile-first, Telegram Mini App mos)",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build": "node scripts/build.mjs",
+    "preview": "node scripts/serve.mjs dist 5173",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:core": "tsc -p tsconfig.core.json --noEmit",
+    "test": "npm run test:unit && npm run test:e2e",
+    "test:unit": "node scripts/test-unit.mjs",
+    "test:e2e": "node scripts/build.mjs && node --test tests/e2e/"
+  },
+  "dependencies": {
+    "docx": "^9.8.1",
+    "jszip": "^3.10.1",
+    "pdf-lib": "^1.17.1",
+    "pptxgenjs": "^4.0.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.63.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

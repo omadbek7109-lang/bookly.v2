@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["node"] },
+  "include": ["src/models", "src/services/ai", "src/services/export", "src/services/import", "src/utils", "src/i18n", "tests/unit"],
+  "exclude": ["src/**/*.tsx"]
+}

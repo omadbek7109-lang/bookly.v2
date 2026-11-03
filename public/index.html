@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#0f1030" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f5fb" media="(prefers-color-scheme: light)" />
+    <meta name="description" content="Bookly 2.0 — g'oyangizni sun'iy intellekt yordamida chiroyli elektron kitobga aylantiring." />
+    <meta name="color-scheme" content="light dark" />
+    <title>Bookly 2.0 — AI Book Creator</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try {
+        var s = JSON.parse(localStorage.getItem('bookly.settings') || '{}');
+        var t = s.theme || 'system';
+        var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+    </script>
+    <!-- BOOKLY:ASSETS -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Bookly ishlashi uchun JavaScript yoqilgan bo'lishi kerak.</noscript>
+  </body>
+</html>
