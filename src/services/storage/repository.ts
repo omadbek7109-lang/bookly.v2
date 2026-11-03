@@ -27,7 +27,7 @@ export interface StoredAsset {
 }
 
 export interface AssetRepository {
-  put(file: Blob, name?: string): Promise<StoredAsset>;
+  put(file: Blob, name?: string, id?: string): Promise<StoredAsset>;
   get(id: string): Promise<StoredAsset | null>;
   remove(id: string): Promise<void>;
   list(): Promise<StoredAsset[]>;
@@ -78,9 +78,9 @@ export const MAX_ASSET_BYTES = 15 * 1024 * 1024;
 export class LocalAssetRepository implements AssetRepository {
   private urlCache = new Map<string, string>();
 
-  async put(file: Blob, name = 'asset'): Promise<StoredAsset> {
+  async put(file: Blob, name = 'asset', id?: string): Promise<StoredAsset> {
     if (file.size > MAX_ASSET_BYTES) throw new Error('FILE_TOO_LARGE');
-    const asset: StoredAsset = { id: uid('ast'), blob: file, mime: file.type || 'application/octet-stream', name, size: file.size, createdAt: Date.now() };
+    const asset: StoredAsset = { id: id ?? uid('ast'), blob: file, mime: file.type || 'application/octet-stream', name, size: file.size, createdAt: Date.now() };
     await idbPut('assets', asset);
     return asset;
   }

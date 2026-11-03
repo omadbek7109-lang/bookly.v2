@@ -105,7 +105,6 @@ export async function exportPptx(input: ExportInput): Promise<ExportOutput> {
   pptx.author = book.author || 'Bookly';
   pptx.subject = book.subtitle || book.description.slice(0, 200);
   pptx.company = 'Bookly 2.0';
-  pptx.lang = book.language === 'uz' ? 'uz-Latn-UZ' : book.language;
 
   const accent = hexColor(book.theme.accent);
   const ink = hexColor(book.theme.ink, '1c1b29');
