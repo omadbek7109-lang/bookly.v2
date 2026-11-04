@@ -35,6 +35,8 @@ export interface SyncState {
   records: Record<string, SyncRecord>;
   lastSyncAt: number | null;
   lastBackupAt: number | null;
+  /** Last cloud listing, used to show statuses while offline. */
+  remoteCache?: RemoteBookSummary[];
 }
 
 export type EnginePhase = 'signed-out' | 'idle' | 'syncing' | 'offline' | 'error';
@@ -98,8 +100,10 @@ export class SyncEngine {
     const user = this.client.user;
     if (!user) { this.reset(); return []; }
     const st = await this.loadState(user);
+    const locals = await this.books.list();
     try {
-      const [locals, remotes] = await Promise.all([this.books.list(), this.listRemote()]);
+      const remotes = await this.listRemote();
+      st.remoteCache = remotes;
       const hashes: Record<string, string> = {};
       for (const b of locals) hashes[b.id] = await bookHash(b);
       const entries = classify(locals, hashes, remotes, st.records);
@@ -111,10 +115,17 @@ export class SyncEngine {
           dirty = true;
         }
       }
-      if (dirty) await this.persist();
+      await this.persist();
+      void dirty;
       this.emit({ phase: 'idle', entries, message: null });
       return entries;
     } catch (e) {
+      if (e instanceof CloudError && e.offline) {
+        // Offline: show the last known cloud state so the user still sees every local book.
+        const hashes: Record<string, string> = {};
+        for (const b of locals) hashes[b.id] = await bookHash(b);
+        this.emit({ entries: classify(locals, hashes, st.remoteCache ?? [], st.records) });
+      }
       this.handleError(e);
       throw e;
     }

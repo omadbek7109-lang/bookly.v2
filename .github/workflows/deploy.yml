@@ -82,3 +82,21 @@ jobs:
           name: e2e-screenshots
           path: test-results/*.png
           if-no-files-found: ignore
+
+  live-supabase:
+    # Exercises the real Supabase project (auth, RLS, storage, sync, conflicts) with two test accounts.
+    # Skips itself until the four BOOKLY_TEST_* secrets are added in Settings → Secrets and variables → Actions.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Live checks against Supabase
+        env:
+          BOOKLY_TEST_EMAIL_A: ${{ secrets.BOOKLY_TEST_EMAIL_A }}
+          BOOKLY_TEST_PASSWORD_A: ${{ secrets.BOOKLY_TEST_PASSWORD_A }}
+          BOOKLY_TEST_EMAIL_B: ${{ secrets.BOOKLY_TEST_EMAIL_B }}
+          BOOKLY_TEST_PASSWORD_B: ${{ secrets.BOOKLY_TEST_PASSWORD_B }}
+        run: node scripts/live-check.mjs

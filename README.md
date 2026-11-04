@@ -44,6 +44,31 @@ ostida ham, Telegram webview’da ham ishlaydi. Boshqa yo‘l uchun: `BASE_PATH=
 Lokal tekshirish (GitHub Pages bilan bir xil URL tuzilmasi): `npm run build && npm run preview`
 → http://127.0.0.1:5173/bookly.v2/
 
+## Cloud zaxira (2-bosqich, ixtiyoriy)
+
+Bookly local-first: hisobsiz ham kitob yaratish, tahrir, rasm, o‘qish va PDF/EPUB/DOCX/PPTX eksport to‘liq ishlaydi.
+Hisob ochilsa (Profil → “Hisob yaratish”) kitoblar Supabase’ga zaxiralanadi va qurilmalar orasida sinxronlanadi.
+
+- **Baza:** `supabase/migrations/` — `profiles`, `books`, `chapters`, `book_assets`, `user_settings`, `sync_metadata`,
+  RLS (faqat o‘z yozuvlari), private `book-assets` bucket (foydalanuvchi papkasi, 15 MB, rasm/audio).
+- **Ilova:** `src/services/cloud/` — qo‘shimcha kutubxonasiz Supabase klienti, sinxron dvigatel (revision bo‘yicha
+  konflikt, foydalanuvchi tanlovi, oflayn qayta urinish, lokal kitoblarni hech qachon o‘chirmaydi).
+- **UI:** Profil → Hisob kartasi, `#/cloud` sahifasi (holat, oxirgi zaxira, hajm, zaxiralash, tiklash, konfliktlar, chiqish).
+- **Testlar:** `supabase/tests/rls_test.sql` (SQL editor’da), `tests/unit/cloud.test.ts`, `tests/e2e/cloud.test.mjs`,
+  `npm run test:live` (haqiqiy loyihaga qarshi; CI’da `BOOKLY_TEST_*` secret’lari bilan).
+
+### Environment variables
+| O‘zgaruvchi | Qayerda | Izoh |
+|---|---|---|
+| `SUPABASE_URL` | build | Sukut: `https://lphczkjwrokfzpnlhkei.supabase.co` |
+| `SUPABASE_PUBLISHABLE_KEY` | build | Faqat publishable (`sb_publishable_…`) kalit. **service_role/secret kalitni hech qachon frontendga qo‘ymang.** |
+| `BASE_PATH` | build | Sukut `/bookly.v2/` |
+| `BOOKLY_TEST_EMAIL_A/B`, `BOOKLY_TEST_PASSWORD_A/B` | GitHub Actions secrets | Faqat jonli tekshiruv uchun (ixtiyoriy) |
+
+### Supabase Dashboard’da bir martalik sozlama
+Authentication → URL Configuration: **Site URL** = `https://omadbek7109-lang.github.io/bookly.v2/`,
+**Redirect URLs** ga ham shu manzilni qo‘shing (email tasdiqlash va parolni tiklash havolalari ilovaga qaytishi uchun).
+
 ## Imkoniyatlar
 
 | Bo‘lim | Nima ishlaydi |
@@ -98,6 +123,6 @@ tests/
 - AI natijalari namunaviy (DEMO) generator — haqiqiy til modeli emas.
 - PDF standart 14 shriftdan foydalanadi: kirill harflari lotinga transliteratsiya qilinadi (2-bosqichda Unicode shrift qo‘shiladi). EPUB/DOCX/PPTX’da Unicode to‘liq ishlaydi.
 - Audio faqat EPUB va ilova ichida ijro etiladi; PDF/DOCX/PPTX’da izoh sifatida chiqadi.
-- Ma’lumotlar faqat shu brauzerda; sinxronlash 2-bosqichda.
+- Cloud zaxira ixtiyoriy; hisobsiz ma’lumotlar faqat shu brauzerda. claude.ai artifakt ichida Cloud ishlamaydi (CSP tashqi so‘rovlarni bloklaydi).
 - Rus va ingliz tarjimalari qisman (yetishmagan matnlar o‘zbekcha).
 - Paket qulfi (`package-lock.json`) hali yaratilmagan — birinchi `npm install`da paydo bo‘ladi.

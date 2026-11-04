@@ -207,6 +207,8 @@ test('offline: local work continues, status says offline, backup resumes when on
   await createBook(page, 'Oflayn yozilgan');
   await go(page, '#/cloud');
   await page.waitForFunction(() => /Oflayn/.test(document.querySelector('[data-testid=sync-chip]')?.textContent || ''));
+  await page.waitForSelector('[data-testid=cloud-row]', { timeout: 5000 }); // local book still listed while offline
+  await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(OUT, 'cloud-offline.png') });
   await go(page, '#/books');
   await page.waitForSelector('[data-testid=book-row]', { timeout: 5000 });
