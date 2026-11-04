@@ -151,6 +151,8 @@ p { margin: 0; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   height: 56px; border-radius: 18px; color: var(--text-2); font-size: 12px; font-weight: 600; transition: color .2s, background .2s;
 }
+.tab span { white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 380px) { .tab { font-size: 11px; } .tabbar { padding-left: 6px; padding-right: 6px; grid-template-columns: 1fr 1fr 76px 1fr 1fr; } }
 .tab.is-active { color: var(--text); background: var(--accent-soft); }
 .tab.is-active svg { color: var(--primary); }
 [data-theme='dark'] .tab.is-active { background: linear-gradient(180deg, rgba(139, 92, 246, .32), rgba(139, 92, 246, .14)); }

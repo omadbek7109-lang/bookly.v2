@@ -404,7 +404,10 @@ test('GitHub Pages layout: base path, assets, deep links, 404 fallback and mobil
     await page.goto(origin + SITE_BASE);
     await page.waitForSelector('[data-testid=splash]');
     await page.click('[data-testid=splash-skip]');
+    await page.waitForSelector('[data-testid=splash]', { state: 'detached' });
     await page.waitForSelector('.home .hero');
+    const tabWrap = await page.$$eval('.tab span', (els) => els.filter((e) => e.getBoundingClientRect().height > 20).map((e) => e.textContent));
+    assert.deepEqual(tabWrap, [], `tab labels fit on one line at ${w}px`);
     assert.equal(await page.title(), 'Bookly 2.0 — AI Book Creator');
     assert.equal(await page.locator('.qa-tile').count(), 8, 'quick actions rendered');
     assert.ok(await page.locator('.tabbar').isVisible(), 'bottom navigation visible');
