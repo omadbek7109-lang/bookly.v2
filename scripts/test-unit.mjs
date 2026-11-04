@@ -19,7 +19,7 @@ await esbuild.build({
   outExtension: { '.js': '.mjs' },
   packages: 'external',
   alias: { '@': path.join(root, 'src') },
-  define: { __DEV__: 'false', __BOOKLY_VERSION__: '"test"' },
+  define: { __DEV__: 'false', __BOOKLY_VERSION__: '"test"', __SUPABASE_URL__: '"https://test.supabase.co"', __SUPABASE_KEY__: '"sb_publishable_test"' },
   logLevel: 'warning',
 });
 const files = fs.readdirSync(out).filter((f) => f.endsWith('.mjs')).map((f) => path.join(out, f));

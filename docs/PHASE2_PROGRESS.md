@@ -16,9 +16,9 @@ FLECT STARS (`kyqzoamprcmupxvssokj`) and DAMEO (`reymdxmzfgctdhowndye`) are neve
       conflict detection, anon denied). Test data rolled back. Test users rls-test-a/b@bookly.test exist.
 
 ## Next
-- [ ] 5. Auth client (signup, login, logout, password reset, session refresh) — zero-dependency fetch client.
-- [ ] 6. Cloud backup & sync engine (revision-based conflicts, user choice, offline retry, never deletes local).
-- [ ] 7. Storage: sha256 dedupe upload/download, size/type checks, orphan cleanup action.
+- [x] 5. Auth client `src/services/cloud/client.ts` (signup, login, logout, reset, update password, refresh, email-link tokens).
+- [x] 6. Sync engine `src/services/cloud/sync.ts` + pure rules `sync-core.ts` (revision conflicts, device/cloud/both choice, offline retry, never deletes local). Unit tests `tests/unit/cloud.test.ts` (10) against `tests/fake-supabase.mjs`.
+- [x] 7. Storage in engine: sha256 dedupe, 15 MB + image/audio check, orphan cleanup (tested).
 - [ ] 8. UI in Profile: Account, Cloud Backup, Sync status, Last backup, Storage usage, Backup now, Restore, Logout, conflict sheet.
 - [ ] 9. Tests (unit sync logic, e2e with mock server; live checks in CI) at 360/390/430.
 - [ ] 10. Commit, push, deploy, final report.

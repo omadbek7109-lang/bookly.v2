@@ -44,6 +44,9 @@ export function esbuildOptions({ dev = false } = {}) {
       'process.env.NODE_ENV': JSON.stringify(dev ? 'development' : 'production'),
       __BOOKLY_VERSION__: JSON.stringify(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version),
       __DEV__: JSON.stringify(dev),
+      // Publishable (browser-safe) Supabase settings. Secret / service_role keys must never be added here.
+      __SUPABASE_URL__: JSON.stringify(process.env.SUPABASE_URL ?? 'https://lphczkjwrokfzpnlhkei.supabase.co'),
+      __SUPABASE_KEY__: JSON.stringify(process.env.SUPABASE_PUBLISHABLE_KEY ?? 'sb_publishable_h7GZN0DOMiNYA47Ik0RMuA_DIwaHkbQ'),
       global: 'globalThis',
     },
     logLevel: 'info',
