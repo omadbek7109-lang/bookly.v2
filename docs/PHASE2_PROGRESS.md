@@ -21,7 +21,13 @@ FLECT STARS (`kyqzoamprcmupxvssokj`) and DAMEO (`reymdxmzfgctdhowndye`) are neve
 - [x] 7. Storage in engine: sha256 dedupe, 15 MB + image/audio check, orphan cleanup (tested).
 - [x] 8. UI: Profile → AccountCard; `#/cloud` page (status, last backup/sync, usage, backup now, restore, per-book upload/restore/remove, conflict sheet, orphan cleanup, logout); auth sheet (login/signup/forgot), new-password sheet, one-time backup prompt; pages prefetched for offline use.
 - [x] 9. Tests: unit 23/23 (10 cloud), e2e flows 13/13 + cloud 7/7 (360/390/430), SQL RLS 29/29. Live HTTP check `npm run test:live` in CI job `live-supabase` (needs 4 secrets).
-- [ ] 10. Commit, push, deploy, final report.
+- [x] 10. Pushed; CI 704ddf8: unit, build, e2e, deploy to gh-pages all green; Pages serves gh-pages.
+
+## Open items (owner action)
+- Supabase → Authentication → URL Configuration: Site URL + Redirect URL = https://omadbek7109-lang.github.io/bookly.v2/
+- Custom SMTP for production sign-up/reset emails (built-in mailer is rate limited).
+- Add 4 GitHub secrets BOOKLY_TEST_EMAIL_A/B, BOOKLY_TEST_PASSWORD_A/B to run the live HTTP check.
+- Not yet built: syncing user_settings and profile avatar to the cloud; stale chapter-row cleanup; ru/en texts for cloud screens.
 
 ## Notes
 - The SQL tool asks for confirmation on statements containing `DELETE`; that prompt is auto-cancelled
