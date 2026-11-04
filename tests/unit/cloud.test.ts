@@ -13,7 +13,7 @@ const URL_ = 'https://test.supabase.co';
 function device(fake: ReturnType<typeof createFakeSupabase>, name: string) {
   const books = new Map<string, Book>();
   const blobs = new Map<string, { blob: Blob; mime: string; name: string; size: number }>();
-  let session: Session | null = null;
+  let session = null as Session | null;
   let syncState: SyncState | null = null;
   const local: LocalBooks = {
     async list() { return [...books.values()].map((b) => structuredClone(b)); },
@@ -47,7 +47,7 @@ test('auth: sign up, sign in, wrong password, sign out, password reset and updat
   assert.equal(d.session, null, 'session removed from storage on logout');
   await assert.rejects(d.client.signIn('ali@example.com', 'xato'), (e) => friendlyError(e) === 'Email yoki parol noto‘g‘ri.');
   await d.client.signIn('ali@example.com', 'parol12345');
-  assert.ok(d.session?.access_token, 'session persisted');
+  assert.ok((d.session as Session | null)?.access_token, 'session persisted');
   await d.client.requestPasswordReset('ali@example.com');
   await d.client.updatePassword('yangiParol987');
   await d.client.signOut();
