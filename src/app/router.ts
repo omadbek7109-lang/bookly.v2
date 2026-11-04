@@ -58,4 +58,5 @@ export const routes = {
   cover: (id?: string) => (id ? `/cover/${id}` : '/cover'),
   export: (id?: string) => (id ? `/export/${id}` : '/export'),
   import: () => '/import',
+  cloud: () => '/cloud',
 };

@@ -12,6 +12,7 @@ import { storageEstimate } from '../../services/storage/db';
 import { assets } from '../../services/storage/repository';
 import { downloadBlob, formatBytes } from '../../services/export/prepare';
 import type { ExportFormat } from '../../services/storage/settings';
+import { AccountCard, useCloudEmail } from '../cloud/AccountCard';
 
 declare const __BOOKLY_VERSION__: string;
 
@@ -25,6 +26,7 @@ export default function ProfilePage() {
   const restoreInput = useRef<HTMLInputElement>(null);
   const avatar = useAssetUrl(settings.profile.avatarAssetId);
   const live = books.filter((b) => !b.deletedAt);
+  const cloudEmail = useCloudEmail();
 
   useEffect(() => { void storageEstimate().then(setUsage); }, [books.length]);
 
@@ -67,11 +69,11 @@ export default function ProfilePage() {
         <div className="profile-main">
           <input className="input input-name" value={settings.profile.name} placeholder={t('profile.namePh')} aria-label={t('profile.name')}
             onChange={(e) => update({ profile: { ...settings.profile, name: e.target.value } })} data-testid="profile-name" />
-          <span className="chip"><Icon name="user" size={14} /> {t('profile.demo')}</span>
+          <span className="chip"><Icon name="user" size={14} /> {cloudEmail ?? t('profile.demo')}</span>
         </div>
         {settings.profile.avatarAssetId && <Button size="sm" variant="ghost" onClick={() => update({ profile: { ...settings.profile, avatarAssetId: null } })}>{t('profile.removeAvatar')}</Button>}
       </section>
-      <p className="demo-note"><Icon name="shield" size={16} /> {t('profile.demoNote')}</p>
+      <AccountCard />
 
       <div className="stats-grid">
         <div className="stat glass"><strong>{live.length}</strong><span>{t('home.stats.books')}</span></div>

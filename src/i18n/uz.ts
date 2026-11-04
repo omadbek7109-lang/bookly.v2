@@ -450,7 +450,7 @@ const uz = {
   'import.unsupported': 'Bu format qo‘llab-quvvatlanmaydi. TXT, DOCX yoki EPUB tanlang.',
 
   'profile.title': 'Profil',
-  'profile.demo': 'Lokal demo profil',
+  'profile.demo': 'Lokal profil (hisobsiz)',
   'profile.demoNote': 'Hisob tizimi hali ulanmagan. Barcha maʼlumotlar faqat shu qurilmada saqlanadi. Telegram orqali kirish 2-bosqichda qo‘shiladi.',
   'profile.name': 'Ism',
   'profile.namePh': 'Ismingiz',
@@ -480,7 +480,7 @@ const uz = {
   'profile.aboutText': 'Bookly — g‘oyani professional elektron kitobga aylantiruvchi platforma: AI yaratish, tahrir, muqova, ko‘rish, eksport va shaxsiy kutubxona.',
   'profile.version': 'Versiya {v}',
   'profile.privacy': 'Maxfiylik',
-  'profile.privacyText': '1-bosqichda Bookly hech qanday maʼlumotni serverga yubormaydi. Kitoblar va rasmlar brauzeringizdagi IndexedDB da, sozlamalar esa localStorage da saqlanadi. API kalitlari ilovada saqlanmaydi.',
+  'profile.privacyText': 'Kitoblar va rasmlar avval shu qurilmadagi IndexedDB da, sozlamalar localStorage da saqlanadi. Hisob ochib Cloud zaxirani yoqsangiz, kitoblaringiz Supabase’dagi himoyalangan bazaga yuklanadi: ularni faqat siz ko‘ra olasiz (RLS). Ilovada maxfiy kalitlar saqlanmaydi; eksport fayllari faqat qurilmangizda yaratiladi.',
   'profile.reducedMotion': 'Animatsiyalarni kamaytirish',
 
   'error.title': 'Nimadir noto‘g‘ri ketdi',

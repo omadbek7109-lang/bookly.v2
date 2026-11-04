@@ -15,6 +15,10 @@ export interface Settings {
   exportIncludeToc: boolean;
   reader: { fontSize: number; lineHeight: number; font: 'serif' | 'sans'; mode: 'light' | 'sepia' | 'dark' };
   profile: { name: string; avatarAssetId: string | null };
+  /** Optional cloud backup: sync automatically while signed in. */
+  cloudAutoSync: boolean;
+  /** The "back up your local books?" question was answered for this account id. */
+  cloudPromptedFor: string | null;
 }
 
 export const SETTINGS_KEY = 'bookly.settings';
@@ -30,6 +34,8 @@ export const DEFAULT_SETTINGS: Settings = {
   exportIncludeToc: true,
   reader: { fontSize: 18, lineHeight: 1.7, font: 'serif', mode: 'light' },
   profile: { name: '', avatarAssetId: null },
+  cloudAutoSync: true,
+  cloudPromptedFor: null,
 };
 
 export function loadSettings(): Settings {

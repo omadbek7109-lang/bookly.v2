@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import { App } from './app/App';
+import { App, prefetchPages } from './app/App';
 import { initTelegram } from './services/platform/telegram';
 import { requestPersistence } from './services/storage/db';
 import './styles/app.css';
@@ -14,3 +14,4 @@ window.visualViewport?.addEventListener('resize', setVh);
 window.addEventListener('resize', setVh);
 
 createRoot(document.getElementById('root')!).render(<App />);
+prefetchPages();

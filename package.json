@@ -12,7 +12,7 @@
     "typecheck:core": "tsc -p tsconfig.core.json --noEmit",
     "test": "npm run test:unit && npm run test:e2e",
     "test:unit": "node scripts/test-unit.mjs",
-    "test:e2e": "node scripts/build.mjs && node --test --test-concurrency=1 tests/e2e/flows.test.mjs"
+    "test:e2e": "node scripts/build.mjs && node --test --test-concurrency=1 tests/e2e/flows.test.mjs tests/e2e/cloud.test.mjs"
   },
   "dependencies": {
     "docx": "^9.8.1",

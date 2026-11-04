@@ -8,23 +8,47 @@ import { HomePage } from '../features/home/HomePage';
 import { createBook } from '../models/book';
 import { books } from '../services/storage/repository';
 import type { MessageKey } from '../i18n';
+import { CloudProvider } from '../features/cloud/CloudContext';
+import { BackupPromptSheet, NewPasswordSheet } from '../features/cloud/AuthSheet';
 
-const LibraryPage = lazy(() => import('../features/library/LibraryPage'));
-const StudioPage = lazy(() => import('../features/studio/StudioPage'));
-const TemplatesPage = lazy(() => import('../features/templates/TemplatesPage'));
-const ProfilePage = lazy(() => import('../features/profile/ProfilePage'));
-const CreatorPage = lazy(() => import('../features/ai-creator/CreatorPage'));
-const EditorPage = lazy(() => import('../features/editor/EditorPage'));
-const ReaderPage = lazy(() => import('../features/reader/ReaderPage'));
-const CoverPage = lazy(() => import('../features/cover-designer/CoverPage'));
-const ExportPage = lazy(() => import('../features/export/ExportPage'));
-const ImportPage = lazy(() => import('../features/import/ImportPage'));
+const PAGE_LOADERS = {
+  LibraryPage: () => import('../features/library/LibraryPage'),
+  StudioPage: () => import('../features/studio/StudioPage'),
+  TemplatesPage: () => import('../features/templates/TemplatesPage'),
+  ProfilePage: () => import('../features/profile/ProfilePage'),
+  CreatorPage: () => import('../features/ai-creator/CreatorPage'),
+  EditorPage: () => import('../features/editor/EditorPage'),
+  ReaderPage: () => import('../features/reader/ReaderPage'),
+  CoverPage: () => import('../features/cover-designer/CoverPage'),
+  ExportPage: () => import('../features/export/ExportPage'),
+  ImportPage: () => import('../features/import/ImportPage'),
+  CloudPage: () => import('../features/cloud/CloudPage'),
+};
+
+/** Loads every screen in the background once the app is idle, so they keep working offline. */
+export function prefetchPages() {
+  const run = () => { for (const load of Object.values(PAGE_LOADERS)) void load().catch(() => {}); };
+  const w = window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => void };
+  setTimeout(() => (w.requestIdleCallback ? w.requestIdleCallback(run, { timeout: 4000 }) : run()), 1500);
+}
+
+const LibraryPage = lazy(PAGE_LOADERS.LibraryPage);
+const StudioPage = lazy(PAGE_LOADERS.StudioPage);
+const TemplatesPage = lazy(PAGE_LOADERS.TemplatesPage);
+const ProfilePage = lazy(PAGE_LOADERS.ProfilePage);
+const CreatorPage = lazy(PAGE_LOADERS.CreatorPage);
+const EditorPage = lazy(PAGE_LOADERS.EditorPage);
+const ReaderPage = lazy(PAGE_LOADERS.ReaderPage);
+const CoverPage = lazy(PAGE_LOADERS.CoverPage);
+const ExportPage = lazy(PAGE_LOADERS.ExportPage);
+const ImportPage = lazy(PAGE_LOADERS.ImportPage);
+const CloudPage = lazy(PAGE_LOADERS.CloudPage);
 
 const TABS: { path: string; icon: IconName; label: MessageKey; match: (p: string) => boolean }[] = [
   { path: routes.home(), icon: 'home', label: 'nav.home', match: (p) => p === '/' },
   { path: routes.books(), icon: 'bookOpen', label: 'nav.books', match: (p) => p.startsWith('/books') },
   { path: routes.studio(), icon: 'layers', label: 'nav.studio', match: (p) => p.startsWith('/studio') || p.startsWith('/templates') || p.startsWith('/create') || p.startsWith('/cover') || p.startsWith('/export') || p.startsWith('/import') },
-  { path: routes.profile(), icon: 'user', label: 'nav.profile', match: (p) => p.startsWith('/profile') },
+  { path: routes.profile(), icon: 'user', label: 'nav.profile', match: (p) => p.startsWith('/profile') || p.startsWith('/cloud') },
 ];
 
 const SIDE: { path: string; icon: IconName; label: MessageKey; match: (p: string) => boolean }[] = [
@@ -79,6 +103,7 @@ function Shell() {
     case 'cover': page = <CoverPage key={b ?? 'pick'} bookId={b} />; break;
     case 'export': page = <ExportPage key={b ?? 'pick'} bookId={b} />; break;
     case 'import': page = <ImportPage />; break;
+    case 'cloud': page = <CloudPage />; break;
     default: page = <EmptyState icon="alert" title={t('notFound.title')} action={<Button onClick={() => navigate('/')}>{t('nav.home')}</Button>} />;
   }
 
@@ -113,6 +138,8 @@ function Shell() {
         </nav>
       )}
       <CreateSheet open={createOpen} onClose={() => setCreateOpen(false)} />
+      <NewPasswordSheet />
+      <BackupPromptSheet />
       <DialogHost />
       <ToastHost />
     </div>
@@ -158,7 +185,9 @@ export function App() {
     <SettingsProvider>
       <UiProvider>
         <LibraryProvider>
-          <Root />
+          <CloudProvider>
+            <Root />
+          </CloudProvider>
         </LibraryProvider>
       </UiProvider>
     </SettingsProvider>
