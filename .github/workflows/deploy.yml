@@ -1,0 +1,84 @@
+# Builds the Bookly app and publishes the production build (dist/) to the `gh-pages` branch.
+#
+# One-time setting: GitHub → Settings → Pages → Build and deployment →
+#   Source: "Deploy from a branch", Branch: "gh-pages" / "(root)".
+# (Serving "main / (root)" shows README.md because the repository root contains source code,
+#  not the built site.)
+name: Deploy Bookly to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      BASE_PATH: /${{ github.event.repository.name }}/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Unit tests (document model + PDF/DOCX/PPTX/EPUB files)
+        run: npm run test:unit
+
+      - name: Production build
+        run: npm run build
+
+      - name: Verify build output is the app, not docs
+        run: |
+          test -f dist/index.html
+          test -f dist/404.html
+          test -f dist/.nojekyll
+          grep -q '<div id="root"></div>' dist/index.html
+          grep -Eq 'src="\./assets/app-[A-Z0-9]+\.js"' dist/index.html
+          for f in $(grep -oE '(src|href)="\./[^"]+"' dist/index.html | sed -E 's/.*"\.\/([^"]+)"/\1/'); do
+            test -f "dist/$f" || { echo "missing dist/$f"; exit 1; }
+          done
+          echo "dist/ contents:"; find dist -maxdepth 2 | sort
+
+      - name: Publish dist/ to gh-pages branch
+        run: |
+          cd dist
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -q -m "Deploy ${GITHUB_SHA::7} (${GITHUB_REPOSITORY})"
+          git push --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" gh-pages
+          echo "Published to https://${GITHUB_REPOSITORY_OWNER}.github.io/${{ github.event.repository.name }}/" >> "$GITHUB_STEP_SUMMARY"
+
+  e2e:
+    # Full browser test suite (mobile flows, exports, Pages base path). Does not block deployment.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - name: End-to-end tests
+        run: |
+          export CHROME_PATH="$(node -e "console.log(require('playwright').chromium.executablePath())")"
+          npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-screenshots
+          path: test-results/*.png
+          if-no-files-found: ignore

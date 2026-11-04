@@ -24,6 +24,26 @@ Node.js ≥ 20 kerak. E2E testlar Playwright va Chrome/Chromium bilan ishlaydi
 
 Test yordamchi parametrlari: `?fastAI=1` (DEMO AI kechikishsiz), `?noIntro=1` (kirish animatsiyasisiz).
 
+## GitHub Pages’ga joylash
+
+Sayt manzili: **https://omadbek7109-lang.github.io/bookly.v2/**
+
+Repo ildizida manba kod turadi (`src/`, `public/index.html` — bu shablon, tayyor sahifa emas).
+Brauzer ochadigan tayyor ilova faqat `npm run build` dan keyin `dist/` papkasida paydo bo‘ladi.
+Shuning uchun Pages **main / (root)** dan emas, build natijasidan berilishi kerak:
+
+1. `.github/workflows/deploy.yml` har `main` push’ida: `npm install` → unit testlar → `npm run build`
+   → `dist/` tekshiruvi → `dist/` ni **`gh-pages`** branch’iga joylaydi.
+2. Bir martalik sozlama: **Settings → Pages → Build and deployment → Source: Deploy from a branch →
+   Branch: `gh-pages` / `(root)` → Save.**
+
+Build `.nojekyll` (Jekyll o‘chirilgan) va `404.html` (masalan `/bookly.v2/books` → `/bookly.v2/#/books`)
+fayllarini ham yaratadi. Asset yo‘llari nisbiy (`./assets/...`), shuning uchun ilova `/bookly.v2/`
+ostida ham, Telegram webview’da ham ishlaydi. Boshqa yo‘l uchun: `BASE_PATH=/ npm run build`.
+
+Lokal tekshirish (GitHub Pages bilan bir xil URL tuzilmasi): `npm run build && npm run preview`
+→ http://127.0.0.1:5173/bookly.v2/
+
 ## Imkoniyatlar
 
 | Bo‘lim | Nima ishlaydi |

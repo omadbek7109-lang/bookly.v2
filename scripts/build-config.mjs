@@ -6,6 +6,19 @@ import fs from 'node:fs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const outdir = path.join(root, 'dist');
 
+/**
+ * Public base path of the deployed site. GitHub Pages serves this repository at
+ * https://<user>.github.io/bookly.v2/ — override with BASE_PATH=/ for a root domain.
+ * Asset URLs stay relative (./assets/...), so the same build also works inside
+ * Telegram webviews and on any sub-path; BASE_PATH is used for the 404 fallback.
+ */
+export const basePath = (() => {
+  let b = process.env.BASE_PATH ?? '/bookly.v2/';
+  if (!b.startsWith('/')) b = `/${b}`;
+  if (!b.endsWith('/')) b = `${b}/`;
+  return b;
+})();
+
 /** @param {{dev?: boolean}} opts */
 export function esbuildOptions({ dev = false } = {}) {
   return {
@@ -56,4 +69,37 @@ export function writeHtml(metafile, { dev = false } = {}) {
     if (f === 'index.html') continue;
     fs.cpSync(path.join(root, 'public', f), path.join(outdir, f), { recursive: true });
   }
+  if (!dev) writePagesFiles();
+}
+
+/**
+ * GitHub Pages extras:
+ *  - .nojekyll: serve files as-is (no Jekyll processing).
+ *  - 404.html: GitHub Pages returns it for unknown paths. The app uses hash routing, so a
+ *    path like /bookly.v2/books is redirected to /bookly.v2/#/books instead of a dead page.
+ */
+export function writePagesFiles() {
+  fs.writeFileSync(path.join(outdir, '.nojekyll'), '');
+  const html = `<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bookly 2.0</title>
+<script>
+  (function () {
+    var base = ${JSON.stringify(basePath)};
+    var p = location.pathname;
+    var rest = p.indexOf(base) === 0 ? p.slice(base.length) : p.replace(/^\\/+/, '');
+    rest = rest.replace(/\\/+$/, '');
+    location.replace(base + location.search + (rest ? '#/' + rest : location.hash));
+  })();
+</script>
+</head>
+<body style="font-family:system-ui;background:#0d0e2b;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0">
+<a href="${basePath}" style="color:#c4b5fd">Bookly 2.0 ochilmoqda…</a>
+</body>
+</html>
+`;
+  fs.writeFileSync(path.join(outdir, '404.html'), html);
 }

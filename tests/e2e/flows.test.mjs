@@ -11,14 +11,17 @@ import { startServer } from '../../scripts/serve.mjs';
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const OUT = path.join(ROOT, 'test-results');
 fs.mkdirSync(OUT, { recursive: true });
-let server, browser, base;
+const SITE_BASE = process.env.BASE_PATH || '/bookly.v2/';
+let server, browser, base, origin;
 const consoleErrors = [];
 
 const exe = process.env.CHROME_PATH || ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].find((p) => fs.existsSync(p));
 
 before(async () => {
-  server = await startServer(path.join(ROOT, 'dist'), 0);
-  base = `http://127.0.0.1:${server.address().port}/?fastAI=1`;
+  // Served exactly like GitHub Pages: https://<user>.github.io/bookly.v2/
+  server = await startServer(path.join(ROOT, 'dist'), 0, { base: SITE_BASE });
+  origin = `http://127.0.0.1:${server.address().port}`;
+  base = `${origin}${SITE_BASE}?fastAI=1`;
   browser = await chromium.launch({ executablePath: exe, args: ['--no-sandbox'] });
 });
 after(async () => { await browser?.close(); server?.close(); });
@@ -372,6 +375,59 @@ test('profile settings: theme, name and backup', async () => {
   assert.match(await page.locator('.home-greeting').innerText(), /Muhayyo/);
   await page.screenshot({ path: path.join(OUT, 'home-light.png') });
   await ctx.close();
+});
+
+test('GitHub Pages layout: base path, assets, deep links, 404 fallback and mobile viewports', async () => {
+  // 1) the built HTML references only relative asset URLs that resolve under the base path
+  const html = fs.readFileSync(path.join(ROOT, 'dist/index.html'), 'utf8');
+  assert.match(html, /<div id="root"><\/div>/, 'index.html is the app shell, not a README');
+  const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(refs.some((r) => /assets\/app-[\w]+\.js$/.test(r)), 'hashed app bundle referenced');
+  for (const r of refs) {
+    assert.ok(r.startsWith('./'), `asset URL must be relative to ${SITE_BASE}: ${r}`);
+    const res = await fetch(new URL(r, origin + SITE_BASE));
+    assert.equal(res.status, 200, `${r} served under ${SITE_BASE}`);
+  }
+  assert.ok(fs.existsSync(path.join(ROOT, 'dist/.nojekyll')), '.nojekyll present');
+  // 2) root and no-slash URLs reach the app; unknown paths return the 404 fallback
+  assert.equal((await fetch(origin + SITE_BASE.slice(0, -1), { redirect: 'manual' })).status, 301);
+  const missing = await fetch(`${origin}${SITE_BASE}books`);
+  assert.equal(missing.status, 404);
+
+  for (const [w, h] of [[360, 800], [390, 844], [430, 932]]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'dark' });
+    const page = await ctx.newPage();
+    const failed = [];
+    page.on('response', (r) => { if (r.status() >= 400 && !r.url().endsWith('/books')) failed.push(`${r.status()} ${r.url()}`); });
+    page.on('pageerror', (e) => consoleErrors.push(`pageerror@${w}: ${e.message}`));
+    // first visit: real intro, then the home screen
+    await page.goto(origin + SITE_BASE);
+    await page.waitForSelector('[data-testid=splash]');
+    await page.click('[data-testid=splash-skip]');
+    await page.waitForSelector('.home .hero');
+    assert.equal(await page.title(), 'Bookly 2.0 — AI Book Creator');
+    assert.equal(await page.locator('.qa-tile').count(), 8, 'quick actions rendered');
+    assert.ok(await page.locator('.tabbar').isVisible(), 'bottom navigation visible');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    assert.ok(overflow <= 1, `no horizontal scroll at ${w}px (${overflow})`);
+    await page.screenshot({ path: path.join(OUT, `pages-home-${w}.png`) });
+    // interactive: open the create sheet and start an AI book
+    await page.click('[data-testid=fab-create]');
+    await page.click('[data-testid=create-ai]');
+    await page.waitForSelector('[data-testid=creator-topic]');
+    assert.ok(page.url().startsWith(origin + SITE_BASE) && page.url().includes('#/create'), `hash route under base: ${page.url()}`);
+    // deep link typed as a path (e.g. shared link) is rescued by 404.html
+    await page.goto(`${origin}${SITE_BASE}books`);
+    await page.waitForURL(/#\/books$/);
+    await page.waitForSelector('[data-testid=library-search]');
+    // reload on a hash route keeps the screen
+    await page.goto(`${origin}${SITE_BASE}#/studio`);
+    await page.reload();
+    await page.waitForSelector('.studio .tool-card');
+    await page.screenshot({ path: path.join(OUT, `pages-studio-${w}.png`) });
+    assert.deepEqual(failed, [], `no failed requests at ${w}px`);
+    await ctx.close();
+  }
 });
 
 test('no uncaught errors or console errors during the run', () => {
