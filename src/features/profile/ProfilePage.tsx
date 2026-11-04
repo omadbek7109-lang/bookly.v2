@@ -36,8 +36,8 @@ export default function ProfilePage() {
 
   const backup = async () => {
     const blob = await createBackup();
-    downloadBlob(blob, `bookly-backup-${new Date().toISOString().slice(0, 10)}.json`);
-    toast(t('profile.backupDone'), 'success');
+    const r = await downloadBlob(blob, `bookly-backup-${new Date().toISOString().slice(0, 10)}.json`);
+    if (r === 'saved') toast(t('profile.backupDone'), 'success');
   };
 
   const restore = async (f?: File) => {

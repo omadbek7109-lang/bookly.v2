@@ -37,12 +37,13 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
     try {
       const out = await exportBook(book, format, opts);
       if (!out.bytes.length) throw new Error('empty file');
-      downloadBytes(out.bytes, out.filename, out.mime);
+      const saved = await downloadBytes(out.bytes, out.filename, out.mime);
+      if (saved === 'failed') throw new Error('Faylni saqlab bo‘lmadi');
       setLast(out);
       history.unshift({ name: out.filename, size: out.bytes.length, at: Date.now(), out });
       history.splice(6);
       refresh((x) => x + 1);
-      toast(t('export.success', { name: out.filename, size: formatBytes(out.bytes.length) }), 'success');
+      if (saved === 'saved') toast(t('export.success', { name: out.filename, size: formatBytes(out.bytes.length) }), 'success');
     } catch (e) {
       console.error(e);
       toast(t('export.error', { msg: (e as Error).message || String(e) }), 'error');
@@ -112,7 +113,7 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
         <div className="export-done glass" role="status" data-testid="export-done">
           <Icon name="check" size={20} />
           <span><strong>{last.filename}</strong><small>{formatBytes(last.bytes.length)} · {last.mime.split('/').pop()?.split('.').pop()}</small></span>
-          <Button size="sm" variant="secondary" icon="download" onClick={() => downloadBytes(last.bytes, last.filename, last.mime)}>{t('export.downloadAgain')}</Button>
+          <Button size="sm" variant="secondary" icon="download" onClick={() => void downloadBytes(last.bytes, last.filename, last.mime)}>{t('export.downloadAgain')}</Button>
         </div>
       )}
 
@@ -124,7 +125,7 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
               <li key={h.at} className="list-row">
                 <span className="list-row-icon"><Icon name="file" size={18} /></span>
                 <span className="list-row-text"><span>{h.name}</span><small>{formatBytes(h.size)} · {new Date(h.at).toLocaleTimeString()}</small></span>
-                <Button size="sm" variant="ghost" icon="download" onClick={() => downloadBytes(h.out.bytes, h.out.filename, h.out.mime)} aria-label={t('export.downloadAgain')} />
+                <Button size="sm" variant="ghost" icon="download" onClick={() => void downloadBytes(h.out.bytes, h.out.filename, h.out.mime)} aria-label={t('export.downloadAgain')} />
               </li>
             ))}
           </ul>

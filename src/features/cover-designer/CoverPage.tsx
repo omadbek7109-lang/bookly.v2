@@ -113,8 +113,9 @@ function Designer({ book }: { book: Book }) {
 
   const download = async (mime: 'image/png' | 'image/jpeg') => {
     const blob = await renderCoverBlob(latest.current, { width: 1600, mime });
-    downloadBlob(blob, `${slugify(book.title)}-cover.${mime === 'image/png' ? 'png' : 'jpg'}`);
-    toast(`${slugify(book.title)}-cover.${mime === 'image/png' ? 'png' : 'jpg'}`, 'success');
+    const name = `${slugify(book.title)}-cover.${mime === 'image/png' ? 'png' : 'jpg'}`;
+    const r = await downloadBlob(blob, name);
+    if (r === 'saved') toast(name, 'success'); else if (r === 'failed') toast(t('export.error', { msg: name }), 'error');
   };
 
   return (

@@ -55,12 +55,40 @@ export async function exportBook(book: Book, format: ExportFormat, options: Expo
   return runExport(format, { book, assets, cover, options });
 }
 
-export function downloadBytes(bytes: Uint8Array, filename: string, mime: string): void {
-  const blob = new Blob([bytes as BlobPart], { type: mime });
-  downloadBlob(blob, filename);
+export type SaveOutcome = 'saved' | 'declined' | 'failed';
+
+interface DownloadsApi { save(req: { filename: string; data: Blob }): Promise<{ status: string }> }
+interface ClaudeHost { use(name: string): Promise<unknown> }
+
+/** Resolves the Claude artifact `downloads` capability when the app runs as a claude.ai artifact. */
+function artifactDownloads(): Promise<DownloadsApi | null> {
+  const host = (window as unknown as { claude?: ClaudeHost }).claude;
+  if (!host || typeof host.use !== 'function') return Promise.resolve(null);
+  return host.use('downloads').then((d) => (d as DownloadsApi | null) ?? null).catch(() => null);
 }
 
-export function downloadBlob(blob: Blob, filename: string): void {
+export function downloadBytes(bytes: Uint8Array, filename: string, mime: string): Promise<SaveOutcome> {
+  return downloadBlob(new Blob([bytes as BlobPart], { type: mime }), filename);
+}
+
+/**
+ * Saves a generated file. Inside a claude.ai artifact the sandbox blocks <a download>, so the
+ * platform's `downloads` capability is used (the viewer confirms the save). Everywhere else
+ * (GitHub Pages, Telegram, local) a regular browser download is started.
+ */
+export async function downloadBlob(blob: Blob, filename: string): Promise<SaveOutcome> {
+  const dl = await artifactDownloads();
+  if (dl) {
+    try {
+      await dl.save({ filename, data: blob });
+      return 'saved';
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code === 'declined') return 'declined';
+      console.warn('[bookly] artifact download failed', e);
+      return 'failed';
+    }
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -70,6 +98,7 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  return 'saved';
 }
 
 export function formatBytes(n: number): string {
