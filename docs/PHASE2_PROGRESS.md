@@ -30,6 +30,16 @@ FLECT STARS (`kyqzoamprcmupxvssokj`) and DAMEO (`reymdxmzfgctdhowndye`) are neve
 - [x] Client: auto sign-in inside Telegram, "Telegram orqali kirish" button, launch hash cleaned, Telegram script loaded only in Telegram.
 - [x] Tests: unit verify (matches Telegram reference algorithm, rejects tampering/expired), e2e Telegram flow, CI `telegram-check`.
 
+## Telegram fixes + bot (2026-11-06, later)
+- [x] Root cause of "Serverda xatolik": service_role had no table grants (42501) → migration `20261106133000_bookly_service_role_grants.sql`.
+- [x] telegram-auth v2: verifyOtp('email') with 'magiclink' fallback; returns a short `detail` code shown in the toast.
+- [x] Edge Function `telegram-bot`: webhook (secret = HMAC(bot token)), /start + /help with "Bookly'ni ochish" Mini App button,
+      chat menu button, commands, descriptions (`?action=setup`, run by CI `telegram-check`), and `?action=send`
+      (multipart, initData-verified) → Bot API sendDocument to the user's own chat; asks requestWriteAccess if needed.
+- [x] Export: after generating, choose "Yuklab olish" or "Telegram'ga yuborish" (outside Telegram: download + Share).
+- [x] Profile inside Telegram: Telegram sign-in primary with visible errors, email optional.
+- [x] Editor chapter titles wrap; sheet footers wrap; Uzbek Cyrillic → Latin in PDF (х → x).
+
 ## Open items (owner action)
 - Supabase → Authentication → URL Configuration: Site URL + Redirect URL = https://omadbek7109-lang.github.io/bookly.v2/
 - Custom SMTP for production sign-up/reset emails (built-in mailer is rate limited).
