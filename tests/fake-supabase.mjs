@@ -13,6 +13,7 @@ export function createFakeSupabase({ requireConfirmation = false } = {}) {
   const refreshTokens = new Map();
   const books = []; const chapters = []; const assets = []; const sync = []; const objects = new Map();
   const log = [];
+  const sentFiles = [];
   let online = true;
 
   const json = (status, body) => ({ status, headers: { 'content-type': 'application/json' }, body: body === undefined ? '' : JSON.stringify(body) });
@@ -106,6 +107,14 @@ export function createFakeSupabase({ requireConfirmation = false } = {}) {
       let user = users.get(email);
       if (!user) { user = { id: nextId('u'), email, password: null, confirmed: true, meta: { display_name: [tg.first_name, tg.last_name].filter(Boolean).join(' '), telegram_id: tg.id } }; users.set(email, user); }
       return json(200, issue(user));
+    }
+    if (path === '/functions/v1/telegram-bot' && q.get('action') === 'send') {
+      // Real function verifies initData and calls Bot API sendDocument; the fake checks the multipart body.
+      const raw = body ? Buffer.from(body).toString('latin1') : '';
+      if (!raw.includes('test-valid-hash')) return json(401, { error: 'invalid_init_data', reason: 'bad_signature' });
+      if (!/name="file"/.test(raw)) return json(400, { error: 'bad_request' });
+      sentFiles.push(/filename="([^"]+)"/.exec(raw)?.[1] ?? '?');
+      return json(200, { ok: true });
     }
     if (path === '/auth/v1/logout') { tokens.delete((headers.authorization || '').replace(/^Bearer /, '')); return { status: 204, headers: {}, body: '' }; }
     if (path === '/auth/v1/recover') return json(200, {});
@@ -207,7 +216,7 @@ export function createFakeSupabase({ requireConfirmation = false } = {}) {
   }
 
   return {
-    handle, fetch: fakeFetch, log,
+    handle, fetch: fakeFetch, log, sentFiles,
     setOnline(v) { online = v; },
     confirm(email) { const u = users.get(email); if (u) u.confirmed = true; },
     state: { users, books, chapters, assets, objects, sync },

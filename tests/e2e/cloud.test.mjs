@@ -279,7 +279,7 @@ test('Telegram Mini App: launch hash is cleaned, user is signed in automatically
   });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => pageErrors.push(e.message));
-  await page.goto(`${origin}${SITE_BASE}?noIntro=1#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=android`);
+  await page.goto(`${origin}${SITE_BASE}?noIntro=1&fastAI=1#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=android`);
   await page.waitForSelector('.home .hero');
   assert.ok(!page.url().includes('tgWebAppData'), `launch params removed from the URL: ${page.url()}`);
   await page.waitForSelector('[data-testid=prompt-backup]', { timeout: 10000 });
@@ -290,6 +290,27 @@ test('Telegram Mini App: launch hash is cleaned, user is signed in automatically
   assert.equal(await page.locator('[data-testid=account-email]').innerText(), 'Telegram: Malika');
   assert.match(await page.locator('.profile-card').innerText(), /Telegram: Malika/);
   await page.screenshot({ path: path.join(OUT, 'cloud-telegram.png') });
+
+  // Export → the user chooses: download or receive the file from the bot in their Telegram chat.
+  await go(page, '#/create');
+  await page.fill('[data-testid=creator-topic]', 'Telegram eksport sinovi');
+  await page.locator('[data-testid=creator-chapters]').fill('3');
+  await page.click('[data-testid=creator-outline]');
+  await page.waitForSelector('[data-testid=outline-list] li');
+  await page.click('[data-testid=creator-write]');
+  await page.waitForFunction(() => document.querySelectorAll('.gen-item.is-done').length === document.querySelectorAll('.gen-item').length, null, { timeout: 60000 });
+  await page.click('[data-testid=creator-save-edit]');
+  await page.waitForSelector('[data-testid=editor]');
+  await go(page, '#/export');
+  await page.click('[data-testid=fmt-pdf]');
+  await page.click('[data-testid=export-run]');
+  await page.waitForSelector('[data-testid=export-done]');
+  assert.equal(await page.locator('[data-testid=export-download]').count(), 1, 'download option');
+  await page.click('[data-testid=export-telegram]');
+  await page.waitForFunction(() => /Yuborildi/.test(document.querySelector('[data-testid=export-telegram]')?.textContent || ''), null, { timeout: 10000 });
+  assert.equal(fake.sentFiles.length, 1, 'file sent through telegram-bot');
+  assert.match(fake.sentFiles[0], /\.pdf$/);
+  await page.screenshot({ path: path.join(OUT, 'export-telegram.png') });
   await ctx.close();
 });
 

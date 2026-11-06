@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { useUi } from '../../app/AppContext';
+import { friendlyError } from '../../services/cloud/client';
 import { navigate, routes } from '../../app/router';
 import { Icon } from '../../components/Icon';
 import { Button } from '../../components/ui';
@@ -20,6 +22,7 @@ export function useCloudEmail(): string | null {
 export function AccountCard() {
   const cloud = useCloud();
   const [auth, setAuth] = useState<null | 'login' | 'signup'>(null);
+  const { toast } = useUi();
   if (!cloud.available) return null;
   if (!cloud.user) {
     return (
@@ -31,13 +34,20 @@ export function AccountCard() {
             <p className="muted small">Hisobsiz ham hamma narsa shu qurilmada ishlaydi. Hisob ochsangiz, kitoblar Cloud’ga zaxiralanadi va boshqa qurilmalarda ham ochiladi.</p>
           </div>
         </div>
-        {cloud.inTelegram && (
-          <Button icon="user" block loading={cloud.telegramBusy} onClick={() => void cloud.signInWithTelegram().catch(() => {})} data-testid="account-telegram">Telegram orqali kirish</Button>
+        {cloud.inTelegram ? (
+          <>
+            <Button icon="user" block loading={cloud.telegramBusy}
+              onClick={() => void cloud.signInWithTelegram().then(() => toast('Telegram orqali kirildi', 'success')).catch((e) => toast(friendlyError(e), 'error'))}
+              data-testid="account-telegram">Telegram orqali kirish</Button>
+            <p className="muted small tg-note">Telegram’da parol yoki email kerak emas — hisob avtomatik ochiladi.</p>
+            <button type="button" className="link-btn small" onClick={() => setAuth('login')} data-testid="account-login">Email bilan kirish (ixtiyoriy)</button>
+          </>
+        ) : (
+          <div className="row-actions wrap">
+            <Button variant="secondary" onClick={() => setAuth('login')} data-testid="account-login">Kirish</Button>
+            <Button icon="user" onClick={() => setAuth('signup')} data-testid="account-signup">Hisob yaratish</Button>
+          </div>
         )}
-        <div className="row-actions wrap">
-          <Button variant="secondary" onClick={() => setAuth('login')} data-testid="account-login">Kirish</Button>
-          <Button icon="user" onClick={() => setAuth('signup')} data-testid="account-signup">Hisob yaratish</Button>
-        </div>
         <AuthSheet open={!!auth} initial={auth ?? 'login'} onClose={() => setAuth(null)} />
       </section>
     );

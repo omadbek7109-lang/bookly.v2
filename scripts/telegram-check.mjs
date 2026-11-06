@@ -19,4 +19,17 @@ if (r.status === 500 && /not_configured/.test(body)) console.log('       → TEL
 const empty = await fetch(fn, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
 const eb = await empty.text();
 report(empty.status === 401, 'empty initData rejected', `${empty.status} ${eb}`);
+
+// ---- telegram-bot: register webhook + menu button (idempotent), then check its guards.
+const bot = `${URL_}/functions/v1/telegram-bot`;
+const setupRes = await fetch(`${bot}?action=setup`, { headers: { apikey: KEY } });
+const setupBody = await setupRes.text();
+report(setupRes.ok && /"webhook":"ok"/.test(setupBody) && /"menu_button":"ok"/.test(setupBody), 'bot webhook + menu button registered', `${setupRes.status} ${setupBody}`);
+const hook = await fetch(bot, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ message: { chat: { id: 1, type: 'private' }, text: '/start' } }) });
+report(hook.status === 401, 'webhook without Telegram secret rejected', `${hook.status} ${await hook.text()}`);
+const fd = new FormData();
+fd.set('initData', forged);
+fd.set('file', new Blob(['%PDF-1.4 test'], { type: 'application/pdf' }), 'x.pdf');
+const send = await fetch(`${bot}?action=send`, { method: 'POST', headers: { apikey: KEY }, body: fd });
+report(send.status === 401, 'send-file with forged initData rejected', `${send.status} ${await send.text()}`);
 process.exit(failed ? 1 : 0);

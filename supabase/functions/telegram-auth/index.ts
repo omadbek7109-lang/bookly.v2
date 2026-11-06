@@ -74,7 +74,14 @@ Deno.serve(async (req) => {
     const { data: link, error: linkErr } = await admin.auth.admin.generateLink({ type: 'magiclink', email });
     if (linkErr || !link?.properties?.hashed_token) throw linkErr ?? new Error('no token');
     const pub = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data: ses, error: otpErr } = await pub.auth.verifyOtp({ token_hash: link.properties.hashed_token, type: 'magiclink' });
+    let { data: ses, error: otpErr } = await pub.auth.verifyOtp({ token_hash: link.properties.hashed_token, type: 'email' });
+    if (otpErr || !ses.session) {
+      // Older Auth versions only accept the legacy 'magiclink' type for this token — retry with a fresh one.
+      console.warn('verifyOtp(email) failed, retrying as magiclink', otpErr?.message);
+      const again = await admin.auth.admin.generateLink({ type: 'magiclink', email });
+      if (again.error || !again.data?.properties?.hashed_token) throw again.error ?? new Error('no token');
+      ({ data: ses, error: otpErr } = await pub.auth.verifyOtp({ token_hash: again.data.properties.hashed_token, type: 'magiclink' }));
+    }
     if (otpErr || !ses.session) throw otpErr ?? new Error('no session');
 
     const s = ses.session;
@@ -84,6 +91,9 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error('telegram-auth failed', e);
-    return json(500, { error: 'server_error', message: 'Telegram orqali kirishda xatolik' });
+    // Short, non-secret diagnostic code so a failure reported from a phone can be matched to the logs.
+    const err = e as { code?: string; status?: number; name?: string };
+    const detail = String(err?.code ?? err?.status ?? err?.name ?? 'unknown').slice(0, 40);
+    return json(500, { error: 'server_error', detail, message: 'Telegram orqali kirishda xatolik' });
   }
 });

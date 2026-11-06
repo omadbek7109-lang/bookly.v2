@@ -17,6 +17,13 @@ import { ChapterContent } from '../reader/BookContent';
 import { BlockView, placeCaret, type BlockHandlers } from './blocks';
 import { useEditorState, type SaveStatus } from './useEditorState';
 
+/** Long chapter titles wrap instead of being cut off on narrow phones. */
+function fitTitle(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 export default function EditorPage({ bookId }: { bookId: string }) {
   const { t } = useSettings();
   const [state, setState] = useState<{ book: Book | null; loading: boolean }>({ book: null, loading: true });
@@ -179,7 +186,7 @@ function Editor({ initial }: { initial: Book }) {
     setChapterId(c.id);
     setSheet(null);
     toast(t('editor.chapterAdded'), 'success');
-    setTimeout(() => document.querySelector<HTMLInputElement>('.chapter-title-input')?.select(), 60);
+    setTimeout(() => document.querySelector<HTMLTextAreaElement>('.chapter-title-input')?.select(), 60);
   };
   const renameChapter = async (c: Chapter) => {
     const name = await prompt({ title: t('common.rename'), value: c.title, placeholder: t('editor.chapterTitlePh'), confirmLabel: t('common.save') });
@@ -292,8 +299,10 @@ function Editor({ initial }: { initial: Book }) {
           </button>
 
           <div className="page-paper" style={{ background: undefined }}>
-            <input className="chapter-title-input" value={chapter.title} placeholder={t('editor.chapterTitlePh')} aria-label={t('editor.chapterTitlePh')}
-              onChange={(e) => mutateChapter((c) => ({ ...c, title: e.target.value }), `title:${chapter.id}`)} data-testid="chapter-title" />
+            <textarea key={chapter.id} className="chapter-title-input" rows={1} value={chapter.title} placeholder={t('editor.chapterTitlePh')} aria-label={t('editor.chapterTitlePh')}
+              ref={fitTitle}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+              onChange={(e) => { fitTitle(e.target); mutateChapter((c) => ({ ...c, title: e.target.value.replace(/\n/g, ' ') }), `title:${chapter.id}`); }} data-testid="chapter-title" />
             <div className="blocks" data-testid="blocks">
               {chapter.blocks.map((b, i) => <BlockView key={b.id} block={b} h={handlers(b, i)} active={active === b.id} />)}
             </div>

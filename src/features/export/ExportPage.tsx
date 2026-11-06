@@ -7,6 +7,9 @@ import { Button, EmptyState, Field, PageHeader, Segmented, Switch } from '../../
 import type { MessageKey } from '../../i18n';
 import { bookWordCount } from '../../models/book';
 import { downloadBytes, exportBook, formatBytes } from '../../services/export/prepare';
+import { friendlyError } from '../../services/cloud/client';
+import { haptic, telegramInitData } from '../../services/platform/telegram';
+import { sendFileToTelegram } from '../../services/platform/telegram-send';
 import type { ExportFormat, ExportOutput } from '../../services/export/types';
 
 const FORMATS: { id: ExportFormat; icon: IconName; label: MessageKey; desc: MessageKey; tone: string }[] = [
@@ -31,19 +34,52 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
   const [, refresh] = useState(0);
   const opts = { includeCover: settings.exportIncludeCover, includeToc: settings.exportIncludeToc, pageSize: settings.pdfPageSize };
 
+  const inTelegram = !!telegramInitData();
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState<string | null>(null);
+
+  const download = async (out: ExportOutput) => {
+    const saved = await downloadBytes(out.bytes, out.filename, out.mime);
+    if (saved === 'failed') toast(inTelegram ? 'Yuklab bo‘lmadi. «Telegram’ga yuborish» ni tanlang — fayl chatingizga keladi.' : 'Faylni saqlab bo‘lmadi', 'error');
+    else if (saved === 'saved') toast(t('export.success', { name: out.filename, size: formatBytes(out.bytes.length) }), 'success');
+  };
+
+  const sendToTelegram = async (out: ExportOutput) => {
+    setSending(true);
+    try {
+      await sendFileToTelegram(out.bytes, out.filename, out.mime, book ? `📘 ${book.title}` : '');
+      setSent(out.filename);
+      haptic('success');
+      toast('Fayl Telegram chatingizga yuborildi ✅', 'success');
+    } catch (e) {
+      haptic('error');
+      toast(friendlyError(e), 'error');
+    } finally { setSending(false); }
+  };
+
+  const share = async (out: ExportOutput) => {
+    try {
+      const file = new File([out.bytes as BlobPart], out.filename, { type: out.mime });
+      await navigator.share({ files: [file], title: out.filename });
+    } catch (e) { if ((e as Error).name !== 'AbortError') void download(out); }
+  };
+  const canShare = (out: ExportOutput) => {
+    try { return !!navigator.canShare?.({ files: [new File([out.bytes as BlobPart], out.filename, { type: out.mime })] }); } catch { return false; }
+  };
+
   const run = async () => {
     if (!book) return;
-    setBusy(true); setLast(null);
+    setBusy(true); setLast(null); setSent(null);
     try {
       const out = await exportBook(book, format, opts);
       if (!out.bytes.length) throw new Error('empty file');
-      const saved = await downloadBytes(out.bytes, out.filename, out.mime);
-      if (saved === 'failed') throw new Error('Faylni saqlab bo‘lmadi');
       setLast(out);
       history.unshift({ name: out.filename, size: out.bytes.length, at: Date.now(), out });
       history.splice(6);
       refresh((x) => x + 1);
-      if (saved === 'saved') toast(t('export.success', { name: out.filename, size: formatBytes(out.bytes.length) }), 'success');
+      // In Telegram the user chooses: download, or receive the file in the bot chat (kept there).
+      if (inTelegram) { haptic('success'); toast(t('export.success', { name: out.filename, size: formatBytes(out.bytes.length) }), 'success'); }
+      else await download(out);
     } catch (e) {
       console.error(e);
       toast(t('export.error', { msg: (e as Error).message || String(e) }), 'error');
@@ -111,9 +147,31 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
 
       {last && (
         <div className="export-done glass" role="status" data-testid="export-done">
-          <Icon name="check" size={20} />
-          <span><strong>{last.filename}</strong><small>{formatBytes(last.bytes.length)} · {last.mime.split('/').pop()?.split('.').pop()}</small></span>
-          <Button size="sm" variant="secondary" icon="download" onClick={() => void downloadBytes(last.bytes, last.filename, last.mime)}>{t('export.downloadAgain')}</Button>
+          <div className="export-done-head">
+            <Icon name="check" size={20} />
+            <span><strong>{last.filename}</strong><small>{formatBytes(last.bytes.length)} · tayyor</small></span>
+          </div>
+          <p className="muted small">Faylni qanday olmoqchisiz?</p>
+          <div className="export-choice">
+            <button type="button" className="choice-card" onClick={() => void download(last)} data-testid="export-download">
+              <span className="quick-icon tone-blue"><Icon name="download" size={22} /></span>
+              <strong>Yuklab olish</strong>
+              <small>Qurilmaga saqlash</small>
+            </button>
+            {inTelegram ? (
+              <button type="button" className="choice-card" disabled={sending} onClick={() => void sendToTelegram(last)} data-testid="export-telegram">
+                <span className="quick-icon tone-teal">{sending ? <span className="spinner sm" /> : <Icon name={sent === last.filename ? 'check' : 'send'} size={22} />}</span>
+                <strong>{sent === last.filename ? 'Yuborildi' : 'Telegram’ga yuborish'}</strong>
+                <small>Bot chatida saqlanadi</small>
+              </button>
+            ) : canShare(last) ? (
+              <button type="button" className="choice-card" onClick={() => void share(last)} data-testid="export-share">
+                <span className="quick-icon tone-violet"><Icon name="share" size={22} /></span>
+                <strong>Ulashish</strong>
+                <small>Telegram, pochta va boshqalar</small>
+              </button>
+            ) : null}
+          </div>
         </div>
       )}
 
@@ -125,7 +183,8 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
               <li key={h.at} className="list-row">
                 <span className="list-row-icon"><Icon name="file" size={18} /></span>
                 <span className="list-row-text"><span>{h.name}</span><small>{formatBytes(h.size)} · {new Date(h.at).toLocaleTimeString()}</small></span>
-                <Button size="sm" variant="ghost" icon="download" onClick={() => void downloadBytes(h.out.bytes, h.out.filename, h.out.mime)} aria-label={t('export.downloadAgain')} />
+                {inTelegram && <Button size="sm" variant="ghost" icon="send" disabled={sending} onClick={() => void sendToTelegram(h.out)} aria-label="Telegram’ga yuborish" />}
+                <Button size="sm" variant="ghost" icon="download" onClick={() => void download(h.out)} aria-label={t('export.downloadAgain')} />
               </li>
             ))}
           </ul>

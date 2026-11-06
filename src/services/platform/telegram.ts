@@ -14,6 +14,8 @@ interface TgWebApp {
   disableVerticalSwipes?(): void;
   HapticFeedback?: { impactOccurred(s: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft'): void; notificationOccurred(t: 'error' | 'success' | 'warning'): void };
   BackButton?: { show(): void; hide(): void; onClick(cb: () => void): void; offClick(cb: () => void): void };
+  requestWriteAccess?(cb?: (granted: boolean) => void): void;
+  isVersionAtLeast?(v: string): boolean;
   initDataUnsafe?: { user?: { id: number; first_name?: string; last_name?: string; username?: string; photo_url?: string } };
 }
 
@@ -60,4 +62,13 @@ export function telegramUserName(): string | null {
 /** Signed launch data from Telegram (verified server-side by the telegram-auth Edge Function). */
 export function telegramInitData(): string | null {
   return telegram()?.initData || null;
+}
+
+/** Asks Telegram to let the bot message this user (needed before the first file can be sent). */
+export function requestBotWriteAccess(): Promise<boolean> {
+  const tg = telegram();
+  if (!tg?.requestWriteAccess || (tg.isVersionAtLeast && !tg.isVersionAtLeast('6.9'))) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    try { tg.requestWriteAccess!((ok) => resolve(!!ok)); } catch { resolve(false); }
+  });
 }

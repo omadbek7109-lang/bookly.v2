@@ -25,7 +25,7 @@ export interface SessionStore {
 }
 
 export class CloudError extends Error {
-  constructor(message: string, readonly code: string, readonly status = 0) {
+  constructor(message: string, readonly code: string, readonly status = 0, readonly detail = '') {
     super(message);
     this.name = 'CloudError';
   }
@@ -50,11 +50,18 @@ const UZ_ERRORS: Record<string, string> = {
   signup_disabled: 'Ro‘yxatdan o‘tish hozircha yopiq.',
   invalid_init_data: 'Telegram ma’lumotlari tasdiqlanmadi. Bookly’ni bot ichidan qayta oching.',
   not_configured: 'Telegram orqali kirish serverda hali sozlanmagan.',
+  not_in_telegram: 'Bu funksiya faqat Telegram ichida ishlaydi.',
+  need_start: 'Bot sizga fayl yubora olishi uchun avval botga /start yuboring.',
+  file_too_large: 'Fayl juda katta (Telegram bot orqali 50 MB gacha yuborish mumkin).',
+  telegram_error: 'Telegram faylni qabul qilmadi. Birozdan keyin qayta urinib ko‘ring.',
   server_error: 'Serverda xatolik. Birozdan keyin qayta urinib ko‘ring.',
 };
 
 export function friendlyError(e: unknown): string {
-  if (e instanceof CloudError) return UZ_ERRORS[e.code] ?? e.message;
+  if (e instanceof CloudError) {
+    const base = UZ_ERRORS[e.code] ?? e.message;
+    return e.detail ? `${base} (kod: ${e.detail})` : base;
+  }
   return (e as Error)?.message || String(e);
 }
 
@@ -119,7 +126,7 @@ export class CloudClient {
     if (!res.ok) {
       const code = String(body.error_code ?? body.code ?? body.error ?? (res.status === 401 ? 'session_expired' : `http_${res.status}`));
       const msg = String(body.msg ?? body.message ?? body.error_description ?? body.error ?? res.statusText);
-      throw new CloudError(msg, code === 'invalid_grant' && /invalid login/i.test(msg) ? 'invalid_credentials' : code, res.status);
+      throw new CloudError(msg, code === 'invalid_grant' && /invalid login/i.test(msg) ? 'invalid_credentials' : code, res.status, String(body.detail ?? ''));
     }
     return body as T;
   }

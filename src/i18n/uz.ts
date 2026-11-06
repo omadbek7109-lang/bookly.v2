@@ -434,7 +434,7 @@ const uz = {
   'export.error': 'Eksportda xatolik: {msg}',
   'export.history': 'So‘nggi eksportlar',
   'export.noBooks': 'Eksport qilish uchun kitob yo‘q',
-  'export.pdfNote': 'PDF standart shriftlardan foydalanadi: kirill harflari 2-bosqichda to‘liq qo‘llab-quvvatlanadi.',
+  'export.pdfNote': 'PDF standart shriftlardan foydalanadi: kirill harflari avtomatik lotin yozuviga o‘giriladi. To‘liq kirill uchun DOCX yoki EPUB tanlang.',
 
   'import.title': 'Fayl import',
   'import.subtitle': 'TXT, DOCX yoki EPUB faylni Bookly kitobiga aylantiring.',
