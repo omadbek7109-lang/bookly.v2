@@ -1,4 +1,12 @@
 import type { BookCategory, BookTheme, CoverDesign } from './book';
+import { tr, type MessageKey } from '../i18n';
+
+/** Display names in the current UI language (the data below keeps the Uzbek names as defaults). */
+export const fontLabel = (f: { id: string }) => tr(`font.${f.id}` as MessageKey);
+export const paletteLabel = (p: { id: string }) => tr(`palette.${p.id}` as MessageKey);
+export const templateName = (t: { id: string }) => tr(`tpl.${t.id}.name` as MessageKey);
+export const templateDesc = (t: { id: string }) => tr(`tpl.${t.id}.desc` as MessageKey);
+export const coverTemplateName = (c: { id: string }) => tr(`coverTpl.${c.id}` as MessageKey);
 
 export interface FontDef {
   id: string;

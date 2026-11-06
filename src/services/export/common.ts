@@ -6,24 +6,48 @@ export function exportFilename(book: Book, format: ExportFormat): string {
   return `${slugify(book.title || 'bookly')}.${format}`;
 }
 
+/**
+ * Uzbek is written in Latin or Cyrillic script; the book language is just "uz", so the script is detected
+ * from the book's own text and exported labels (chapter, contents, author) follow it.
+ */
+const cyrScriptCache = new WeakMap<Book, boolean>();
+export function isUzCyrillic(book: Book): boolean {
+  if (book.language !== 'uz') return false;
+  let v = cyrScriptCache.get(book);
+  if (v === undefined) {
+    const sample = [book.title, book.subtitle, book.description, ...book.chapters.slice(0, 3).flatMap((c) => [c.title, ...c.blocks.slice(0, 8).map((b) => ('html' in b ? b.html : ''))])].join(' ').replace(/<[^>]+>/g, '');
+    const cyr = (sample.match(/[\u0400-\u04FF]/g) ?? []).length;
+    const lat = (sample.match(/[A-Za-z]/g) ?? []).length;
+    v = cyr > lat;
+    cyrScriptCache.set(book, v);
+  }
+  return v;
+}
+
+/** Default chapter name in the book's own language (content, not interface). */
+export function chapterLabelLang(language: string, index: number, uzCyrillic = false): string {
+  if (language === 'en') return `Chapter ${index + 1}`;
+  if (language === 'ru') return `Глава ${index + 1}`;
+  return uzCyrillic ? `${index + 1}-боб` : `${index + 1}-bob`;
+}
+
 export function chapterLabel(book: Book, index: number): string {
-  if (book.language === 'en') return `Chapter ${index + 1}`;
-  if (book.language === 'ru') return `Глава ${index + 1}`;
-  return `${index + 1}-bob`;
+  return chapterLabelLang(book.language, index, isUzCyrillic(book));
 }
 
 export function tocLabel(book: Book): string {
-  return book.language === 'en' ? 'Contents' : book.language === 'ru' ? 'Содержание' : 'Mundarija';
+  return book.language === 'en' ? 'Contents' : book.language === 'ru' ? 'Содержание' : isUzCyrillic(book) ? 'Мундарижа' : 'Mundarija';
 }
 
 export function byLabel(book: Book): string {
-  return book.language === 'en' ? 'by' : book.language === 'ru' ? 'Автор:' : 'Muallif:';
+  return book.language === 'en' ? 'by' : book.language === 'ru' ? 'Автор:' : isUzCyrillic(book) ? 'Муаллиф:' : 'Muallif:';
 }
 
 export function audioNote(book: Book, title: string): string {
   const t = title || 'Audio';
   if (book.language === 'en') return `Audio: ${t} (available in the EPUB edition)`;
   if (book.language === 'ru') return `Аудио: ${t} (доступно в версии EPUB)`;
+  if (isUzCyrillic(book)) return `Аудио: ${t} (EPUB нашрида тинглаш мумкин)`;
   return `Audio: ${t} (EPUB nashrida tinglash mumkin)`;
 }
 
@@ -32,7 +56,7 @@ export function chapterDisplayTitle(book: Book, c: Chapter, i: number): string {
 }
 
 export function langTag(book: Book): string {
-  return book.language === 'uz' ? 'uz-Latn' : book.language;
+  return book.language === 'uz' ? (isUzCyrillic(book) ? 'uz-Cyrl' : 'uz-Latn') : book.language;
 }
 
 export function u8(data: ArrayBuffer | Uint8Array | Blob | string): Uint8Array {

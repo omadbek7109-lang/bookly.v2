@@ -7,43 +7,48 @@ import { Button, EmptyState, IconButton, ListRow, PageHeader, Sheet, Spinner, Sw
 import { friendlyError } from '../../services/cloud/client';
 import type { BookSyncStatus, StatusEntry } from '../../services/cloud/sync-core';
 import { formatBytes } from '../../services/export/prepare';
+import { currentLocale, tr, type MessageKey } from '../../i18n';
 import { AuthSheet } from './AuthSheet';
 import { useCloud } from './CloudContext';
 import { accountLabel } from './AccountCard';
 
-export const STATUS_LABEL: Record<BookSyncStatus, { label: string; icon: IconName; tone: string }> = {
-  'local-only': { label: 'Faqat shu qurilmada', icon: 'monitor', tone: 'muted' },
-  synced: { label: 'Sinxron', icon: 'check', tone: 'ok' },
-  'local-changed': { label: 'Yuklanishi kerak', icon: 'upload', tone: 'warn' },
-  'remote-changed': { label: 'Cloud’da yangilangan', icon: 'download', tone: 'info' },
-  conflict: { label: 'Konflikt', icon: 'alert', tone: 'danger' },
-  'cloud-only': { label: 'Faqat Cloud’da', icon: 'globe', tone: 'info' },
+export const STATUS_LABEL: Record<BookSyncStatus, { label: MessageKey; icon: IconName; tone: string }> = {
+  'local-only': { label: 'cloud.status.localOnly', icon: 'monitor', tone: 'muted' },
+  synced: { label: 'cloud.status.synced', icon: 'check', tone: 'ok' },
+  'local-changed': { label: 'cloud.status.localChanged', icon: 'upload', tone: 'warn' },
+  'remote-changed': { label: 'cloud.status.remoteChanged', icon: 'download', tone: 'info' },
+  conflict: { label: 'cloud.status.conflict', icon: 'alert', tone: 'danger' },
+  'cloud-only': { label: 'cloud.status.cloudOnly', icon: 'globe', tone: 'info' },
 };
 
+const INTL: Record<string, string> = { uz: 'uz-Latn', ru: 'ru', en: 'en' };
+
 export function fmtTime(ms: number | null | undefined) {
-  if (!ms) return 'hali yo‘q';
+  if (!ms) return tr('cloud.never');
   const d = new Date(ms);
+  const loc = INTL[currentLocale()] ?? 'uz-Latn';
   const today = new Date().toDateString() === d.toDateString();
-  return today ? `bugun ${d.toLocaleTimeString('uz', { hour: '2-digit', minute: '2-digit' })}` : d.toLocaleString('uz', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return today ? tr('cloud.today', { time: d.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' }) }) : d.toLocaleString(loc, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 export function PhaseChip() {
   const cloud = useCloud();
+  const { t } = useSettings();
   const s = cloud.snapshot;
   const conflicts = s.entries.filter((e) => e.status === 'conflict').length;
   const pending = s.entries.filter((e) => e.status === 'local-only' || e.status === 'local-changed').length;
-  let label = 'Sinxron'; let tone = 'ok'; let icon: IconName = 'check';
-  if (!cloud.online || s.phase === 'offline') { label = 'Oflayn — internet qaytganda davom etadi'; tone = 'muted'; icon = 'globe'; }
-  else if (s.phase === 'syncing') { label = s.progress?.total ? `Sinxronlanmoqda ${s.progress.done}/${s.progress.total}` : 'Sinxronlanmoqda…'; tone = 'info'; icon = 'refresh'; }
-  else if (s.phase === 'error') { label = 'Xatolik — qayta urinib ko‘ring'; tone = 'danger'; icon = 'alert'; }
-  else if (conflicts) { label = `${conflicts} ta konflikt — tanlov kerak`; tone = 'danger'; icon = 'alert'; }
-  else if (pending) { label = `${pending} ta kitob yuklanmagan`; tone = 'warn'; icon = 'upload'; }
+  let label = t('cloud.phase.synced'); let tone = 'ok'; let icon: IconName = 'check';
+  if (!cloud.online || s.phase === 'offline') { label = t('cloud.phase.offline'); tone = 'muted'; icon = 'globe'; }
+  else if (s.phase === 'syncing') { label = s.progress?.total ? t('cloud.phase.syncingN', { done: s.progress.done, total: s.progress.total }) : t('cloud.phase.syncing'); tone = 'info'; icon = 'refresh'; }
+  else if (s.phase === 'error') { label = t('cloud.phase.error'); tone = 'danger'; icon = 'alert'; }
+  else if (conflicts) { label = t('cloud.phase.conflicts', { n: conflicts }); tone = 'danger'; icon = 'alert'; }
+  else if (pending) { label = t('cloud.phase.pending', { n: pending }); tone = 'warn'; icon = 'upload'; }
   return <span className={`sync-chip tone-${tone} ${s.phase === 'syncing' ? 'is-spinning' : ''}`} role="status" data-testid="sync-chip"><Icon name={icon} size={14} /> {label}</span>;
 }
 
 export default function CloudPage() {
   const cloud = useCloud();
-  const { settings, update } = useSettings();
+  const { settings, update, t } = useSettings();
   const { toast, confirm } = useUi();
   const [auth, setAuth] = useState<null | 'login' | 'signup'>(null);
   const [usage, setUsage] = useState<{ books: number; assets: number; asset_bytes: number } | null>(null);
@@ -72,27 +77,27 @@ export default function CloudPage() {
   };
 
   if (!cloud.available) {
-    return <div className="page"><PageHeader title="Zaxiralash" onBack={() => back(routes.profile())} /><EmptyState icon="globe" title="Cloud sozlanmagan" text="Bu nashrda Supabase manzili ko‘rsatilmagan. Ilova lokal rejimda to‘liq ishlaydi." /></div>;
+    return <div className="page"><PageHeader title={t('backup.title')} onBack={() => back(routes.profile())} /><EmptyState icon="globe" title={t('cloud.notConfigured')} text={t('cloud.notConfiguredText')} /></div>;
   }
 
   if (!cloud.user) {
     return (
       <div className="page cloud-page">
-        <PageHeader title="Zaxiralash" subtitle="Ixtiyoriy" onBack={() => back(routes.profile())} />
+        <PageHeader title={t('backup.title')} subtitle={t('cloud.optional')} onBack={() => back(routes.profile())} />
         <section className="cloud-hero glass">
           <span className="quick-icon tone-indigo"><Icon name="globe" size={24} /></span>
           <div>
-            <h2>Kitoblaringiz har doim yoningizda</h2>
-            <p className="muted">Hisob ochsangiz, kitoblar va rasmlar xavfsiz Cloud’ga zaxiralanadi va telefon, kompyuter yoki Telegram’da bir xil ko‘rinadi. Hisobsiz ham hamma narsa shu qurilmada ishlayveradi.</p>
+            <h2>{t('cloud.hero.title')}</h2>
+            <p className="muted">{t('cloud.hero.text')}</p>
           </div>
           <ul className="cloud-points">
-            <li><Icon name="shield" size={16} /> Kitoblaringizni faqat siz ko‘rasiz</li>
-            <li><Icon name="refresh" size={16} /> Qurilmalararo sinxronlash</li>
-            <li><Icon name="bookOpen" size={16} /> Lokal kitoblar o‘chirilmaydi</li>
+            <li><Icon name="shield" size={16} /> {t('cloud.hero.p1')}</li>
+            <li><Icon name="refresh" size={16} /> {t('cloud.hero.p2')}</li>
+            <li><Icon name="bookOpen" size={16} /> {t('cloud.hero.p3')}</li>
           </ul>
           <div className="row-actions wrap">
-            <Button variant="secondary" onClick={() => setAuth('login')} data-testid="cloud-login">Kirish</Button>
-            <Button icon="user" onClick={() => setAuth('signup')} data-testid="cloud-signup">Hisob yaratish</Button>
+            <Button variant="secondary" onClick={() => setAuth('login')} data-testid="cloud-login">{t('auth.tab.login')}</Button>
+            <Button icon="user" onClick={() => setAuth('signup')} data-testid="cloud-signup">{t('auth.title.signup')}</Button>
           </div>
         </section>
         <AuthSheet open={!!auth} initial={auth ?? 'login'} onClose={() => setAuth(null)} />
@@ -102,30 +107,30 @@ export default function CloudPage() {
 
   return (
     <div className="page cloud-page">
-      <PageHeader title="Zaxiralash" subtitle={accountLabel(cloud.user) ?? undefined} onBack={() => back(routes.profile())}
-        actions={<IconButton icon="refresh" label="Holatni yangilash" onClick={() => void run('refresh', () => cloud.engine!.refreshStatus())} />} />
+      <PageHeader title={t('backup.title')} subtitle={accountLabel(cloud.user) ?? undefined} onBack={() => back(routes.profile())}
+        actions={<IconButton icon="refresh" label={t('cloud.refresh')} onClick={() => void run('refresh', () => cloud.engine!.refreshStatus())} />} />
 
       <section className="cloud-summary glass" data-testid="cloud-summary">
         <PhaseChip />
         <dl className="cloud-facts">
-          <div><dt>Oxirgi zaxira</dt><dd data-testid="last-backup">{fmtTime(s.lastBackupAt)}</dd></div>
-          <div><dt>Oxirgi sinxron</dt><dd>{fmtTime(s.lastSyncAt)}</dd></div>
-          <div><dt>Cloud’dagi kitoblar</dt><dd>{usage?.books ?? '—'}</dd></div>
-          <div><dt>Fayllar hajmi</dt><dd>{usage ? `${formatBytes(usage.asset_bytes)} · ${usage.assets} ta` : '—'}</dd></div>
+          <div><dt>{t('cloud.lastBackup')}</dt><dd data-testid="last-backup">{fmtTime(s.lastBackupAt)}</dd></div>
+          <div><dt>{t('cloud.lastSync')}</dt><dd>{fmtTime(s.lastSyncAt)}</dd></div>
+          <div><dt>{t('cloud.booksInCloud')}</dt><dd>{usage?.books ?? '—'}</dd></div>
+          <div><dt>{t('cloud.filesSize')}</dt><dd>{usage ? t('cloud.filesValue', { size: formatBytes(usage.asset_bytes), n: usage.assets }) : '—'}</dd></div>
         </dl>
         <div className="row-actions wrap">
           <Button icon="upload" loading={busy === 'backup'} disabled={!!busy || s.phase === 'syncing'} data-testid="backup-now"
-            onClick={() => void run('backup', async () => { const r = await cloud.engine!.sync('backup'); toast(`${r.uploaded} ta kitob zaxiralandi${r.conflicts ? `, ${r.conflicts} ta konflikt` : ''}`, r.conflicts ? 'info' : 'success'); })}>Hozir zaxiralash</Button>
+            onClick={() => void run('backup', async () => { const r = await cloud.engine!.sync('backup'); toast(r.conflicts ? t('cloud.backedUpConflicts', { n: r.uploaded, c: r.conflicts }) : t('cloud.backedUp', { n: r.uploaded }), r.conflicts ? 'info' : 'success'); })}>{t('backup.now')}</Button>
           <Button variant="secondary" icon="download" loading={busy === 'restore'} disabled={!!busy || s.phase === 'syncing'} data-testid="restore-all"
-            onClick={() => void run('restore', async () => { const r = await cloud.engine!.sync('restore'); toast(`${r.downloaded} ta kitob tiklandi`, 'success'); })}>Cloud’dan tiklash</Button>
+            onClick={() => void run('restore', async () => { const r = await cloud.engine!.sync('restore'); toast(t('profile.restoreDone', { n: r.downloaded }), 'success'); })}>{t('cloud.restoreAll')}</Button>
         </div>
-        <Switch id="auto-sync" label="Avtomatik sinxronlash" checked={settings.cloudAutoSync} onChange={(v) => { update({ cloudAutoSync: v }); if (v) void cloud.sync(); }} />
+        <Switch id="auto-sync" label={t('cloud.autoSync')} checked={settings.cloudAutoSync} onChange={(v) => { update({ cloudAutoSync: v }); if (v) void cloud.sync(); }} />
         {s.message && s.phase === 'error' && <p className="field-error">{s.message}</p>}
       </section>
 
-      <h2 className="sub-title">Kitoblar</h2>
-      {s.phase === 'syncing' && !s.entries.length ? <Spinner label="Yuklanmoqda…" /> : !groups.length ? (
-        <EmptyState icon="bookOpen" title="Hali kitob yo‘q" text="Kitob yarating — u avtomatik Cloud’ga zaxiralanadi." />
+      <h2 className="sub-title">{t('home.stats.books')}</h2>
+      {s.phase === 'syncing' && !s.entries.length ? <Spinner label={t('common.loading')} /> : !groups.length ? (
+        <EmptyState icon="bookOpen" title={t('cloud.empty')} text={t('cloud.emptyText')} />
       ) : (
         <ul className="book-list" data-testid="cloud-list">
           {groups.map((e) => {
@@ -136,19 +141,19 @@ export default function CloudPage() {
                   <BookCover cover={(e.local?.cover ?? e.remote?.cover)!} width={46} />
                   <span className="book-row-text">
                     <strong>{e.local?.title ?? e.title}</strong>
-                    <small className={`status-text tone-${st.tone}`}><Icon name={st.icon} size={13} /> {st.label}</small>
+                    <small className={`status-text tone-${st.tone}`}><Icon name={st.icon} size={13} /> {t(st.label)}</small>
                   </span>
                 </div>
                 <div className="cloud-actions">
-                  {e.status === 'conflict' && <Button size="sm" variant="danger" onClick={() => setConflict(e)} data-testid="resolve">Tanlash</Button>}
-                  {(e.status === 'local-only' || e.status === 'local-changed') && <IconButton icon="upload" label="Cloud’ga yuklash" disabled={!!busy} onClick={() => void run(e.localId, () => cloud.engine!.sync('backup', [e.localId]), 'Yuklandi')} data-testid="row-upload" />}
-                  {(e.status === 'cloud-only' || e.status === 'remote-changed') && <IconButton icon="download" label="Qurilmaga tiklash" disabled={!!busy} onClick={() => void run(e.localId, () => cloud.engine!.sync('restore', [e.localId]), 'Tiklandi')} data-testid="row-restore" />}
-                  {e.local && <IconButton icon="edit" label="Ochish" onClick={() => navigate(routes.editor(e.localId))} />}
+                  {e.status === 'conflict' && <Button size="sm" variant="danger" onClick={() => setConflict(e)} data-testid="resolve">{t('cloud.choose')}</Button>}
+                  {(e.status === 'local-only' || e.status === 'local-changed') && <IconButton icon="upload" label={t('cloud.upload')} disabled={!!busy} onClick={() => void run(e.localId, () => cloud.engine!.sync('backup', [e.localId]), t('cloud.uploaded'))} data-testid="row-upload" />}
+                  {(e.status === 'cloud-only' || e.status === 'remote-changed') && <IconButton icon="download" label={t('cloud.restoreOne')} disabled={!!busy} onClick={() => void run(e.localId, () => cloud.engine!.sync('restore', [e.localId]), t('cloud.restored'))} data-testid="row-restore" />}
+                  {e.local && <IconButton icon="edit" label={t('common.open')} onClick={() => navigate(routes.editor(e.localId))} />}
                   {e.remote && (
-                    <IconButton icon="trash" label="Cloud nusxasini o‘chirish" disabled={!!busy} data-testid="row-remove-cloud"
+                    <IconButton icon="trash" label={t('cloud.removeCopy')} disabled={!!busy} data-testid="row-remove-cloud"
                       onClick={async () => {
-                        if (!(await confirm({ title: 'Cloud nusxasini o‘chirish', message: e.local ? 'Kitob Cloud’dan o‘chiriladi, lekin shu qurilmada qoladi.' : 'Bu kitob faqat Cloud’da. O‘chirilsa, uni qaytarib bo‘lmaydi.', confirmLabel: 'O‘chirish', danger: true }))) return;
-                        await run(e.localId, () => cloud.engine!.removeFromCloud(e.localId), 'Cloud nusxasi o‘chirildi');
+                        if (!(await confirm({ title: t('cloud.removeCopy'), message: e.local ? t('cloud.removeCopyLocal') : t('cloud.removeCopyOnly'), confirmLabel: t('common.delete'), danger: true }))) return;
+                        await run(e.localId, () => cloud.engine!.removeFromCloud(e.localId), t('cloud.copyRemoved'));
                       }} />
                   )}
                 </div>
@@ -159,20 +164,20 @@ export default function CloudPage() {
       )}
 
       <div className="list glass">
-        <ListRow icon="trash" title="Cloud joyini tozalash" subtitle="Hech bir kitob ishlatmayotgan fayllarni o‘chirish" testId="clean-orphans"
+        <ListRow icon="trash" title={t('cloud.clean')} subtitle={t('cloud.cleanSub')} testId="clean-orphans"
           onClick={() => void run('clean', async () => {
             const rows = await cloud.engine!.orphanAssets();
-            if (!rows.length) { toast('Keraksiz fayl yo‘q', 'success'); return; }
+            if (!rows.length) { toast(t('cloud.cleanNone'), 'success'); return; }
             const bytes = rows.reduce((n, r) => n + r.size_bytes, 0);
-            if (!(await confirm({ title: 'Cloud joyini tozalash', message: `${rows.length} ta ishlatilmayotgan fayl (${formatBytes(bytes)}) o‘chiriladi. Kitoblaringizga ta’sir qilmaydi.`, confirmLabel: 'Tozalash', danger: true }))) return;
+            if (!(await confirm({ title: t('cloud.clean'), message: t('cloud.cleanConfirm', { n: rows.length, size: formatBytes(bytes) }), confirmLabel: t('cloud.cleanBtn'), danger: true }))) return;
             const n = await cloud.engine!.cleanOrphans(rows);
-            toast(`${n} ta fayl o‘chirildi`, 'success');
+            toast(t('cloud.cleaned', { n }), 'success');
           })} />
-        <ListRow icon="arrowLeft" danger title="Hisobdan chiqish" subtitle="Kitoblar shu qurilmada qoladi" testId="logout"
+        <ListRow icon="arrowLeft" danger title={t('cloud.logout')} subtitle={t('cloud.logoutSub')} testId="logout"
           onClick={async () => {
-            if (!(await confirm({ title: 'Hisobdan chiqish', message: 'Shu qurilmadagi kitoblar o‘chirilmaydi. Keyin qayta kirib sinxronlashni davom ettirishingiz mumkin.', confirmLabel: 'Chiqish' }))) return;
+            if (!(await confirm({ title: t('cloud.logout'), message: t('cloud.logoutConfirm'), confirmLabel: t('cloud.logoutBtn') }))) return;
             await cloud.signOut();
-            toast('Hisobdan chiqdingiz', 'success');
+            toast(t('cloud.loggedOut'), 'success');
           }} />
       </div>
 
@@ -184,27 +189,28 @@ export default function CloudPage() {
 function ConflictSheet({ entry, onClose }: { entry: StatusEntry | null; onClose: () => void }) {
   const cloud = useCloud();
   const { toast } = useUi();
+  const { t } = useSettings();
   const [busy, setBusy] = useState<string | null>(null);
   if (!entry) return null;
   const pick = async (choice: 'device' | 'cloud' | 'both') => {
     setBusy(choice);
     try {
       await cloud.engine!.resolve(entry.localId, choice);
-      toast(choice === 'both' ? 'Ikkala versiya saqlandi' : choice === 'device' ? 'Shu qurilma versiyasi Cloud’ga yozildi' : 'Cloud versiyasi olindi', 'success');
+      toast(choice === 'both' ? t('conflict.keptBoth') : choice === 'device' ? t('conflict.keptDevice') : t('conflict.keptCloud'), 'success');
       onClose();
     } catch (e) { toast(friendlyError(e), 'error'); } finally { setBusy(null); }
   };
   return (
-    <Sheet open onClose={onClose} title="Qaysi versiyani saqlaymiz?" size="sm">
-      <p className="muted small">“{entry.local?.title ?? entry.title}” kitobi bir vaqtda shu qurilmada ham, boshqa qurilmada ham o‘zgartirilgan. Avtomatik hech narsa o‘chirilmadi.</p>
+    <Sheet open onClose={onClose} title={t('conflict.title')} size="sm">
+      <p className="muted small">{t('conflict.text', { title: entry.local?.title ?? entry.title })}</p>
       <dl className="cloud-facts">
-        <div><dt>Shu qurilma</dt><dd>{fmtTime(entry.local?.updatedAt)}</dd></div>
-        <div><dt>Cloud</dt><dd>{entry.remote ? fmtTime(Date.parse(entry.remote.updated_at)) : '—'}</dd></div>
+        <div><dt>{t('conflict.device')}</dt><dd>{fmtTime(entry.local?.updatedAt)}</dd></div>
+        <div><dt>{t('conflict.cloud')}</dt><dd>{entry.remote ? fmtTime(Date.parse(entry.remote.updated_at)) : '—'}</dd></div>
       </dl>
       <div className="list">
-        <ListRow icon="copy" title="Ikkalasini saqlash (tavsiya)" subtitle="Shu qurilma versiyasi alohida kitob bo‘lib qoladi" onClick={() => void pick('both')} testId="conflict-both" right={busy === 'both' ? <Spinner /> : undefined} />
-        <ListRow icon="monitor" title="Shu qurilma versiyasi" subtitle="Cloud nusxasi shu bilan almashtiriladi" onClick={() => void pick('device')} testId="conflict-device" right={busy === 'device' ? <Spinner /> : undefined} />
-        <ListRow icon="globe" title="Cloud versiyasi" subtitle="Shu qurilmadagi o‘zgarishlar almashtiriladi" onClick={() => void pick('cloud')} testId="conflict-cloud" right={busy === 'cloud' ? <Spinner /> : undefined} />
+        <ListRow icon="copy"  title={t('conflict.both')} subtitle={t('conflict.bothSub')} onClick={() => void pick('both')} testId="conflict-both" right={busy === 'both' ? <Spinner /> : undefined} />
+        <ListRow icon="monitor" title={t('conflict.deviceVer')} subtitle={t('conflict.deviceVerSub')} onClick={() => void pick('device')} testId="conflict-device" right={busy === 'device' ? <Spinner /> : undefined} />
+        <ListRow icon="globe" title={t('conflict.cloudVer')} subtitle={t('conflict.cloudVerSub')} onClick={() => void pick('cloud')} testId="conflict-cloud" right={busy === 'cloud' ? <Spinner /> : undefined} />
       </div>
     </Sheet>
   );

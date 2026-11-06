@@ -125,7 +125,7 @@ export function HomePage({ onCreate }: { onCreate: () => void }) {
           <div className="stats-grid" data-testid="stats">
             <Stat value={stats.books} label={t('home.stats.books')} />
             <Stat value={stats.chapters} label={t('home.stats.chapters')} />
-            <Stat value={stats.words.toLocaleString('uz')} label={t('home.stats.words')} />
+            <Stat value={stats.words.toLocaleString(settings.locale === 'uz' ? 'uz-Latn' : settings.locale)} label={t('home.stats.words')} />
             <Stat value={stats.done} label={t('home.stats.done')} />
           </div>
         </>

@@ -2,11 +2,12 @@ import type { CSSProperties } from 'react';
 import { isSingleText, type Block, type Book, type Chapter } from '../../models/book';
 import { fontById } from '../../models/templates';
 import { useAssetUrl } from '../../hooks/useAssetUrl';
+import { chapterLabel } from '../../services/export/common';
 import { sanitizeInline } from '../../utils/inline';
 
 /** Read-only rendering of the document model (reader + live preview). HTML is re-sanitized. */
 export function ChapterContent({ book, chapter, index, style }: { book: Book; chapter: Chapter; index: number; style?: CSSProperties }) {
-  const label = book.language === 'en' ? `Chapter ${index + 1}` : book.language === 'ru' ? `Глава ${index + 1}` : `${index + 1}-bob`;
+  const label = chapterLabel(book, index);
   return (
     <article className="book-content" style={{ '--accent': book.theme.accent, '--heading-font': fontById(book.theme.headingFont).css, '--body-font': fontById(book.theme.bodyFont).css, ...style } as CSSProperties}>
       {!isSingleText(book) && (

@@ -7,8 +7,9 @@ import { Splash } from '../features/home/Splash';
 import { HomePage } from '../features/home/HomePage';
 import { createBook, type BookLayout } from '../models/book';
 import { books } from '../services/storage/repository';
-import type { MessageKey } from '../i18n';
+import { tr, type MessageKey } from '../i18n';
 import { CloudProvider } from '../features/cloud/CloudContext';
+import { useKeyboardInset } from '../hooks/useAssetUrl';
 import { BackupPromptSheet, NewPasswordSheet } from '../features/cloud/AuthSheet';
 
 const PAGE_LOADERS = {
@@ -64,13 +65,14 @@ const isImmersive = (p: string) => p.startsWith('/editor/') || p.startsWith('/re
 
 export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
+  const { settings: { locale } } = useSettings();
   const [step, setStep] = useState<'menu' | 'blank'>('menu');
   const [title, setTitle] = useState('');
   const [layout, setLayout] = useState<BookLayout>('chapters');
   useEffect(() => { if (!open) { setStep('menu'); setTitle(''); setLayout('chapters'); } }, [open]);
   const newBlank = async () => {
     onClose();
-    const b = await books.save(createBook({ title: title.trim() || t('common.untitled'), layout }));
+    const b = await books.save(createBook({ title: title.trim() || t('common.untitled'), layout, language: locale }));
     navigate(routes.editor(b.id));
   };
   const go = (to: string) => () => { onClose(); navigate(to); };
@@ -112,6 +114,7 @@ export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => v
 }
 
 function Shell() {
+  useKeyboardInset(); // --kb: on-screen keyboard height, used by the editor toolbar and bottom sheets
   const route = useRoute();
   const t = useT();
   const [createOpen, setCreateOpen] = useState(false);
@@ -190,8 +193,8 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { err: Error | nu
   render() {
     if (this.state.err) {
       return (
-        <EmptyState icon="alert" title="Nimadir noto‘g‘ri ketdi" text={`Sahifani qayta yuklang. Maʼlumotlaringiz saqlangan. (${this.state.err.message})`}
-          action={<Button icon="refresh" onClick={() => location.reload()}>Qayta yuklash</Button>} />
+        <EmptyState icon="alert" title={tr('error.title')} text={`${tr('error.text')} (${this.state.err.message})`}
+          action={<Button icon="refresh" onClick={() => location.reload()}>{tr('error.reload')}</Button>} />
       );
     }
     return this.props.children;

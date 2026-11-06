@@ -5,6 +5,7 @@ import { BookCover } from '../../components/BookCover';
 import { Icon } from '../../components/Icon';
 import { Button, EmptyState, IconButton, ListRow, Segmented, Sheet, Spinner } from '../../components/ui';
 import { isSingleText, type Book } from '../../models/book';
+import { chapterLabel } from '../../services/export/common';
 import { books } from '../../services/storage/repository';
 import { ChapterContent } from './BookContent';
 
@@ -115,7 +116,7 @@ export default function ReaderPage({ bookId }: { bookId: string }) {
               <>
                 <h2 className="reader-toc-title">{t('reader.toc')}</h2>
                 <ol className="reader-toc">
-                  {book.chapters.map((c, i) => <li key={c.id}><button type="button" onClick={() => go(i)}><span>{i + 1}.</span> {c.title || `${i + 1}-bob`}</button></li>)}
+                  {book.chapters.map((c, i) => <li key={c.id}><button type="button" onClick={() => go(i)}><span>{i + 1}.</span> {c.title || chapterLabel(book, i)}</button></li>)}
                 </ol>
               </>
             )}
@@ -136,7 +137,7 @@ export default function ReaderPage({ bookId }: { bookId: string }) {
         <div className="list">
           <ListRow icon="book" title={book.title} subtitle={book.author} onClick={() => { go(-1); setSheet(null); }} />
           {book.chapters.map((c, i) => (
-            <ListRow key={c.id} icon={i === idx ? 'bookOpen' : 'file'} title={`${i + 1}. ${c.title || `${i + 1}-bob`}`} onClick={() => { go(i); setSheet(null); }} testId="toc-item" />
+            <ListRow key={c.id} icon={i === idx ? 'bookOpen' : 'file'} title={`${i + 1}. ${c.title || chapterLabel(book, i)}`} onClick={() => { go(i); setSheet(null); }} testId="toc-item" />
           ))}
         </div>
       </Sheet>

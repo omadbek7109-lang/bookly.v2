@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useLibrary, useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes } from '../../app/router';
 import { BookCover } from '../../components/BookCover';
@@ -10,6 +10,7 @@ import { downloadBytes, exportBook, formatBytes } from '../../services/export/pr
 import { friendlyError } from '../../services/cloud/client';
 import { haptic, telegramInitData } from '../../services/platform/telegram';
 import { sendFileToTelegram } from '../../services/platform/telegram-send';
+import { prefetchPdfFonts } from '../../services/export/pdfFonts';
 import type { ExportFormat, ExportOutput } from '../../services/export/types';
 
 const FORMATS: { id: ExportFormat; icon: IconName; label: MessageKey; desc: MessageKey; tone: string }[] = [
@@ -29,6 +30,8 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
   const [selected, setSelected] = useState<string | undefined>(bookId);
   const book = live.find((b) => b.id === (selected ?? live[0]?.id));
   const [format, setFormat] = useState<ExportFormat>(settings.defaultExport);
+  // Unicode PDF fonts download in the background so the first PDF is fast and works offline later.
+  useEffect(() => { prefetchPdfFonts(); }, []);
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState<ExportOutput | null>(null);
   const [, refresh] = useState(0);
@@ -40,7 +43,7 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
 
   const download = async (out: ExportOutput) => {
     const saved = await downloadBytes(out.bytes, out.filename, out.mime);
-    if (saved === 'failed') toast(inTelegram ? 'Yuklab bo‘lmadi. «Telegram’ga yuborish» ni tanlang — fayl chatingizga keladi.' : 'Faylni saqlab bo‘lmadi', 'error');
+    if (saved === 'failed') toast(inTelegram ? t('export.dlFailedTg') : t('export.dlFailed'), 'error');
     else if (saved === 'saved') toast(t('export.success', { name: out.filename, size: formatBytes(out.bytes.length) }), 'success');
   };
 
@@ -50,7 +53,7 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
       await sendFileToTelegram(out.bytes, out.filename, out.mime, book ? `📘 ${book.title}` : '');
       setSent(out.filename);
       haptic('success');
-      toast('Fayl Telegram chatingizga yuborildi ✅', 'success');
+      toast(t('export.sentTg'), 'success');
     } catch (e) {
       haptic('error');
       toast(friendlyError(e), 'error');
@@ -149,26 +152,26 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
         <div className="export-done glass" role="status" data-testid="export-done">
           <div className="export-done-head">
             <Icon name="check" size={20} />
-            <span><strong>{last.filename}</strong><small>{formatBytes(last.bytes.length)} · tayyor</small></span>
+            <span><strong>{last.filename}</strong><small>{formatBytes(last.bytes.length)} · {t('export.ready')}</small></span>
           </div>
-          <p className="muted small">Faylni qanday olmoqchisiz?</p>
+          <p className="muted small">{t('export.howGet')}</p>
           <div className="export-choice">
             <button type="button" className="choice-card" onClick={() => void download(last)} data-testid="export-download">
               <span className="quick-icon tone-blue"><Icon name="download" size={22} /></span>
-              <strong>Yuklab olish</strong>
-              <small>Qurilmaga saqlash</small>
+              <strong>{t('export.download')}</strong>
+              <small>{t('export.downloadSub')}</small>
             </button>
             {inTelegram ? (
               <button type="button" className="choice-card" disabled={sending} onClick={() => void sendToTelegram(last)} data-testid="export-telegram">
                 <span className="quick-icon tone-teal">{sending ? <span className="spinner sm" /> : <Icon name={sent === last.filename ? 'check' : 'send'} size={22} />}</span>
-                <strong>{sent === last.filename ? 'Yuborildi' : 'Telegram’ga yuborish'}</strong>
-                <small>Bot chatida saqlanadi</small>
+                <strong>{sent === last.filename ? t('export.sent') : t('export.sendTg')}</strong>
+                <small>{t('export.sendTgSub')}</small>
               </button>
             ) : canShare(last) ? (
               <button type="button" className="choice-card" onClick={() => void share(last)} data-testid="export-share">
                 <span className="quick-icon tone-violet"><Icon name="share" size={22} /></span>
-                <strong>Ulashish</strong>
-                <small>Telegram, pochta va boshqalar</small>
+                <strong>{t('export.share')}</strong>
+                <small>{t('export.shareSub')}</small>
               </button>
             ) : null}
           </div>
@@ -183,7 +186,7 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
               <li key={h.at} className="list-row">
                 <span className="list-row-icon"><Icon name="file" size={18} /></span>
                 <span className="list-row-text"><span>{h.name}</span><small>{formatBytes(h.size)} · {new Date(h.at).toLocaleTimeString()}</small></span>
-                {inTelegram && <Button size="sm" variant="ghost" icon="send" disabled={sending} onClick={() => void sendToTelegram(h.out)} aria-label="Telegram’ga yuborish" />}
+                {inTelegram && <Button size="sm" variant="ghost" icon="send" disabled={sending} onClick={() => void sendToTelegram(h.out)} aria-label={t('export.sendTg')} />}
                 <Button size="sm" variant="ghost" icon="download" onClick={() => void download(h.out)} aria-label={t('export.downloadAgain')} />
               </li>
             ))}

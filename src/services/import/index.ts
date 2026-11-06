@@ -1,3 +1,7 @@
+import { tr } from '../../i18n';
+
+/** Title for text that comes before the first heading (UI language). */
+const introTitle = () => tr('imp.intro');
 /**
  * Importers convert TXT / DOCX / EPUB files into the Bookly document model.
  * They report anything they could not convert in `warnings` instead of silently dropping it.
@@ -12,7 +16,7 @@ export interface ImportResult { book: Book; assets: PendingAsset[]; warnings: st
 export const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 
 export async function importFile(file: File): Promise<ImportResult> {
-  if (file.size > MAX_IMPORT_BYTES) throw new Error('Fayl 25 MB dan katta');
+  if (file.size > MAX_IMPORT_BYTES) throw new Error(tr('imp.tooLarge'));
   const ext = file.name.toLowerCase().split('.').pop();
   const baseTitle = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
   if (ext === 'txt' || ext === 'md' || file.type === 'text/plain') return importText(await decodeText(file), baseTitle);
@@ -32,7 +36,7 @@ async function decodeText(file: Blob): Promise<string> {
 
 const CHAPTER_RE = /^(?:#\s+.+|(?:\d+\s*[-.]?\s*)?(?:bob|chapter|глава|qism|part)\b.*|(?:bob|chapter|глава)\s+\d+.*)$/i;
 
-export function importText(text: string, fallbackTitle = 'Import qilingan kitob'): ImportResult {
+export function importText(text: string, fallbackTitle = tr('imp.defaultTitle')): ImportResult {
   const warnings: string[] = [];
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   const chapters: Chapter[] = [];
@@ -41,7 +45,7 @@ export function importText(text: string, fallbackTitle = 'Import qilingan kitob'
   let para: string[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
 
-  const ensureChapter = () => { if (!current) { current = createChapter(chapters.length ? `${chapters.length + 1}-bob` : 'Kirish', []); current.blocks = []; chapters.push(current); } return current; };
+  const ensureChapter = () => { if (!current) { current = createChapter(chapters.length ? tr('editor.chapterN', { n: chapters.length + 1 }) : introTitle(), []); current.blocks = []; chapters.push(current); } return current; };
   const flushPara = () => {
     if (para.length) { ensureChapter().blocks.push(createBlock('paragraph', { html: escapeHtml(para.join(' ').replace(/\s+/g, ' ').trim()) })); para = []; }
   };
@@ -81,7 +85,7 @@ export function importText(text: string, fallbackTitle = 'Import qilingan kitob'
     para.push(t);
   }
   flushPara(); flushList();
-  if (!chapters.length) { warnings.push('Fayl bo‘sh — bitta bo‘sh bob yaratildi.'); chapters.push(createChapter('1-bob')); }
+  if (!chapters.length) { warnings.push(tr('imp.empty')); chapters.push(createChapter(tr('editor.chapterN', { n: 1 }))); }
   for (const c of chapters) if (!c.blocks.length) c.blocks.push(createBlock('paragraph'));
   const book = createBook({ title, chapters, source: 'import' });
   return { book, assets: [], warnings };
@@ -94,7 +98,7 @@ const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationship
 
 function parseXml(xml: string, type: DOMParserSupportedType = 'application/xml'): Document {
   const doc = new DOMParser().parseFromString(xml, type);
-  if (doc.getElementsByTagName('parsererror').length) throw new Error('XML tahlil qilinmadi');
+  if (doc.getElementsByTagName('parsererror').length) throw new Error(tr('imp.xml'));
   return doc;
 }
 
@@ -112,7 +116,7 @@ export async function importDocx(data: ArrayBuffer, fallbackTitle: string): Prom
   const JSZip = (await import('jszip')).default;
   const zip = await JSZip.loadAsync(data);
   const docXml = await zip.file('word/document.xml')?.async('string');
-  if (!docXml) throw new Error('word/document.xml topilmadi — bu DOCX fayl emas');
+  if (!docXml) throw new Error(tr('imp.notDocx'));
   const warnings: string[] = [];
   const assets: PendingAsset[] = [];
   const doc = parseXml(docXml);
@@ -153,7 +157,7 @@ export async function importDocx(data: ArrayBuffer, fallbackTitle: string): Prom
   let current: Chapter | null = null;
   let titleTaken = false;
   let pendingList: { ordered: boolean; numId: string; items: string[] } | null = null;
-  const ensure = () => { if (!current) { current = createChapter(chapters.length ? `${chapters.length + 1}-bob` : 'Kirish', []); current.blocks = []; chapters.push(current); } return current; };
+  const ensure = () => { if (!current) { current = createChapter(chapters.length ? tr('editor.chapterN', { n: chapters.length + 1 }) : introTitle(), []); current.blocks = []; chapters.push(current); } return current; };
   const flushList = () => { if (pendingList) { ensure().blocks.push(createBlock('list', { ordered: pendingList.ordered, items: pendingList.items })); pendingList = null; } };
   let skippedObjects = 0;
 
@@ -198,7 +202,7 @@ export async function importDocx(data: ArrayBuffer, fallbackTitle: string): Prom
   };
 
   const body = doc.getElementsByTagNameNS(W_NS, 'body')[0];
-  if (!body) throw new Error('DOCX tanasi topilmadi');
+  if (!body) throw new Error(tr('imp.noBody'));
   for (const el of Array.from(body.children)) {
     if (el.localName === 'p') {
       const ppr = child(el, 'pPr');
@@ -237,7 +241,7 @@ export async function importDocx(data: ArrayBuffer, fallbackTitle: string): Prom
       }
       if (rows.length) ensure().blocks.push(createBlock('table', { header: true, rows }));
     } else if (el.localName === 'sdt') {
-      warnings.push('Avtomatik mundarija (TOC) maydoni o‘tkazib yuborildi — Bookly mundarijani o‘zi yaratadi.');
+      warnings.push(tr('imp.tocField'));
     }
   }
   flushList();
@@ -247,11 +251,11 @@ export async function importDocx(data: ArrayBuffer, fallbackTitle: string): Prom
   const TOC = /^(mundarija|contents|table of contents|содержание|оглавление)$/i;
   for (const c of chapters) c.blocks = c.blocks.filter((b) => !(b.type === 'paragraph' && LABEL.test(plainText(b.html).trim())));
   for (let i = chapters.length - 1; i >= 0; i--) {
-    if (TOC.test(chapters[i].title.trim())) { chapters.splice(i, 1); warnings.push('Hujjatdagi mundarija o‘tkazib yuborildi — Bookly uni avtomatik yaratadi.'); }
+    if (TOC.test(chapters[i].title.trim())) { chapters.splice(i, 1); warnings.push(tr('imp.tocSkipped')); }
   }
   let frontCover: string | null = null;
   let description = '';
-  if (chapters.length > 1 && chapters[0].title === 'Kirish' && !titleTakenAsChapter(chapters[0])) {
+  if (chapters.length > 1 && chapters[0].title === introTitle() && !titleTakenAsChapter(chapters[0])) {
     const front = chapters[0];
     const words = front.blocks.reduce((n, b) => n + plainText('html' in b ? (b as { html: string }).html : '').split(/\s+/).filter(Boolean).length, 0);
     if (words < 80) {
@@ -262,10 +266,10 @@ export async function importDocx(data: ArrayBuffer, fallbackTitle: string): Prom
       description = paras.slice(-1)[0] ?? '';
     }
   }
-  if (skippedObjects) warnings.push(`${skippedObjects} ta qo‘llab-quvvatlanmaydigan obyekt (diagramma, formula yoki joylashtirilgan fayl) o‘tkazib yuborildi.`);
-  if (!chapters.length) { warnings.push('Hujjatda matn topilmadi.'); chapters.push(createChapter('1-bob')); }
+  if (skippedObjects) warnings.push(tr('imp.objects', { n: skippedObjects }));
+  if (!chapters.length) { warnings.push(tr('imp.noText')); chapters.push(createChapter(tr('editor.chapterN', { n: 1 }))); }
   for (const c of chapters) { delete (c as Chapter & { __explicit?: boolean }).__explicit; if (!c.blocks.length) c.blocks.push(createBlock('paragraph')); }
-  if (chapters.length === 1 && chapters[0].title === 'Kirish') warnings.push('“Heading 1” sarlavhalari topilmadi — butun matn bitta bobga joylandi.');
+  if (chapters.length === 1 && chapters[0].title === introTitle()) warnings.push(tr('imp.noHeadings'));
   const book = createBook({ title, author: author === 'Bookly' ? '' : author, description, chapters, source: 'import' });
   if (frontCover) {
     book.cover.background = { ...book.cover.background, kind: 'image', imageAssetId: frontCover };
@@ -300,11 +304,11 @@ export async function importEpub(data: ArrayBuffer, fallbackTitle: string): Prom
   const warnings: string[] = [];
   const assets: PendingAsset[] = [];
   const container = await zip.file('META-INF/container.xml')?.async('string');
-  if (!container) throw new Error('META-INF/container.xml topilmadi — bu EPUB emas');
+  if (!container) throw new Error(tr('imp.notEpub'));
   const opfPath = parseXml(container).getElementsByTagName('rootfile')[0]?.getAttribute('full-path');
-  if (!opfPath) throw new Error('OPF fayl ko‘rsatilmagan');
+  if (!opfPath) throw new Error(tr('imp.noOpfPath'));
   const opfXml = await zip.file(opfPath)?.async('string');
-  if (!opfXml) throw new Error('OPF fayl topilmadi');
+  if (!opfXml) throw new Error(tr('imp.noOpf'));
   const opf = parseXml(opfXml);
   const meta = (tag: string) => opf.getElementsByTagNameNS('http://purl.org/dc/elements/1.1/', tag)[0]?.textContent?.trim() || '';
   const title = meta('title') || fallbackTitle;
@@ -338,7 +342,7 @@ export async function importEpub(data: ArrayBuffer, fallbackTitle: string): Prom
     if (!item || !linear || item.props.includes('nav')) continue;
     if (!/x?html/.test(item.type)) continue;
     const src = await zip.file(item.href)?.async('string');
-    if (!src) { warnings.push(`Spine fayli topilmadi: ${item.href}`); continue; }
+    if (!src) { warnings.push(tr('imp.spineMissing', { href: item.href })); continue; }
     let d: Document;
     try { d = parseXml(src, 'application/xhtml+xml'); } catch { d = new DOMParser().parseFromString(src, 'text/html'); }
     const bodyEl = d.getElementsByTagName('body')[0];
@@ -398,14 +402,14 @@ export async function importEpub(data: ArrayBuffer, fallbackTitle: string): Prom
     };
     await visit(bodyEl);
     if (!blocks.length && !chapterTitle) continue;
-    const t = chapterTitle || d.getElementsByTagName('title')[0]?.textContent?.trim() || `${chapters.length + 1}-bob`;
+    const t = chapterTitle || d.getElementsByTagName('title')[0]?.textContent?.trim() || tr('editor.chapterN', { n: chapters.length + 1 });
     const ch = createChapter(t, blocks);
     chapters.push(ch);
   }
-  if (skippedAudio) warnings.push(`${skippedAudio} ta audio/video element import qilinmadi.`);
-  if (skippedOther) warnings.push(`${skippedOther} ta SVG/formula/ichki obyekt import qilinmadi.`);
+  if (skippedAudio) warnings.push(tr('imp.audio', { n: skippedAudio }));
+  if (skippedOther) warnings.push(tr('imp.other', { n: skippedOther }));
   const coverItem = [...manifest.values()].find((m) => m.props.includes('cover-image'));
-  if (!chapters.length) { warnings.push('EPUB ichida o‘qiladigan bob topilmadi.'); chapters.push(createChapter('1-bob')); }
+  if (!chapters.length) { warnings.push(tr('imp.epubEmpty')); chapters.push(createChapter(tr('editor.chapterN', { n: 1 }))); }
   const book = createBook({ title, author, description, language, chapters, source: 'import' });
   if (coverItem) {
     const id = await assetFor(coverItem.href);

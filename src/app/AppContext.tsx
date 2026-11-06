@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { translate, type MessageKey, type Vars } from '../i18n';
+import { setCurrentLocale, translate, type MessageKey, type Vars } from '../i18n';
 import type { Book } from '../models/book';
 import { books as bookRepo, repoEvents } from '../services/storage/repository';
 import { loadSettings, saveSettings, type Settings } from '../services/storage/settings';
@@ -46,6 +46,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  setCurrentLocale(settings.locale); // services translate their messages in the chosen language too
   const t = useCallback((key: MessageKey, vars?: Vars) => translate(settings.locale, key, vars), [settings.locale]);
   const value = useMemo(() => ({ settings, update, t, resolvedTheme }), [settings, update, t, resolvedTheme]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;

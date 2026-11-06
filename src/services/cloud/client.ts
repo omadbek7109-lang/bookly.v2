@@ -1,3 +1,4 @@
+import { tr, type MessageKey } from '../../i18n';
 /**
  * Minimal, dependency-free Supabase client (Auth + PostgREST + RPC + Storage) for Bookly.
  * Only the publishable key is used; all data access is authorised by the user's JWT and RLS.
@@ -33,34 +34,34 @@ export class CloudError extends Error {
   get offline() { return this.code === 'network'; }
 }
 
-const UZ_ERRORS: Record<string, string> = {
-  invalid_credentials: 'Email yoki parol noto‘g‘ri.',
-  email_not_confirmed: 'Email tasdiqlanmagan. Pochtangizdagi havolani oching.',
-  user_already_exists: 'Bu email bilan hisob allaqachon mavjud. Kirishni tanlang.',
-  email_exists: 'Bu email bilan hisob allaqachon mavjud. Kirishni tanlang.',
-  weak_password: 'Parol juda oddiy: kamida 8 ta belgi, harf va raqam ishlating.',
-  over_email_send_rate_limit: 'Juda ko‘p email so‘raldi. Bir necha daqiqadan keyin qayta urinib ko‘ring.',
-  over_request_rate_limit: 'Juda ko‘p urinish. Biroz kutib, qayta urinib ko‘ring.',
-  email_address_invalid: 'Email manzili noto‘g‘ri.',
-  validation_failed: 'Ma’lumotlar noto‘g‘ri kiritildi.',
-  same_password: 'Yangi parol eskisidan farq qilishi kerak.',
-  session_expired: 'Sessiya tugadi. Qaytadan kiring.',
-  refresh_token_not_found: 'Sessiya tugadi. Qaytadan kiring.',
-  network: 'Internet yo‘q yoki server javob bermadi. Lokal ish davom etadi.',
-  signup_disabled: 'Ro‘yxatdan o‘tish hozircha yopiq.',
-  invalid_init_data: 'Telegram ma’lumotlari tasdiqlanmadi. Bookly’ni bot ichidan qayta oching.',
-  not_configured: 'Telegram orqali kirish serverda hali sozlanmagan.',
-  not_in_telegram: 'Bu funksiya faqat Telegram ichida ishlaydi.',
-  need_start: 'Bot sizga fayl yubora olishi uchun avval botga /start yuboring.',
-  file_too_large: 'Fayl juda katta (Telegram bot orqali 50 MB gacha yuborish mumkin).',
-  telegram_error: 'Telegram faylni qabul qilmadi. Birozdan keyin qayta urinib ko‘ring.',
-  server_error: 'Serverda xatolik. Birozdan keyin qayta urinib ko‘ring.',
+const ERROR_KEYS: Record<string, MessageKey> = {
+  invalid_credentials: 'err.invalid_credentials',
+  email_not_confirmed: 'err.email_not_confirmed',
+  user_already_exists: 'err.user_already_exists',
+  email_exists: 'err.email_exists',
+  weak_password: 'err.weak_password',
+  over_email_send_rate_limit: 'err.over_email_send_rate_limit',
+  over_request_rate_limit: 'err.over_request_rate_limit',
+  email_address_invalid: 'err.email_address_invalid',
+  validation_failed: 'err.validation_failed',
+  same_password: 'err.same_password',
+  session_expired: 'err.session_expired',
+  refresh_token_not_found: 'err.refresh_token_not_found',
+  network: 'err.network',
+  signup_disabled: 'err.signup_disabled',
+  invalid_init_data: 'err.invalid_init_data',
+  not_configured: 'err.not_configured',
+  not_in_telegram: 'err.not_in_telegram',
+  need_start: 'err.need_start',
+  file_too_large: 'err.file_too_large',
+  telegram_error: 'err.telegram_error',
+  server_error: 'err.server_error',
 };
-
 export function friendlyError(e: unknown): string {
   if (e instanceof CloudError) {
-    const base = UZ_ERRORS[e.code] ?? e.message;
-    return e.detail ? `${base} (kod: ${e.detail})` : base;
+    const key = ERROR_KEYS[e.code];
+    const base = key ? tr(key) : e.message;
+    return e.detail ? tr('err.withCode', { msg: base, code: e.detail }) : base;
   }
   return (e as Error)?.message || String(e);
 }

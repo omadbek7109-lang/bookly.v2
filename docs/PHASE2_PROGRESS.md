@@ -68,3 +68,15 @@ FLECT STARS (`kyqzoamprcmupxvssokj`) and DAMEO (`reymdxmzfgctdhowndye`) are neve
       About / Privacy / Help / Version. "Replay intro" removed.
 - [x] Tests: unit 30/30, e2e 24/24 (incl. new: two modes at 360px, AI hidden/demo/server, profile at 360px).
 - [ ] Owner action: add Edge Function secret ANTHROPIC_API_KEY to turn the AI yordamchi on (optional BOOKLY_AI_MODEL, BOOKLY_AI_DAILY_LIMIT).
+
+## Phase 3 — languages, export quality, stability (2026-11-07)
+- [x] i18n: all interface text in src/i18n/{uz,ru,en}.ts (797 keys each; ru/en typed as complete `Record<MessageKey,string>`).
+      Services translate through `tr()` (current UI language). Plural forms for ru/en (`{n|глава|главы|глав}`).
+      Unit test: same keys + placeholders, no script mixing. E2E: every screen/dialog in ru/en/uz at 360 px.
+- [x] PDF: real Unicode text. Embedded fonts Bookly Serif/Sans/Mono (renamed Liberation subsets, OFL, public/fonts,
+      built by scripts/build-fonts.py) + own TrueType reader/subsetter (src/services/export/ttf.ts) for pdf-lib.
+      Uzbek Cyrillic books get Cyrillic labels (1-боб, Мундарижа). Falls back to standard fonts only if fonts fail to load.
+- [x] Export matrix test: PDF/EPUB/DOCX/PPTX × chapters/single × uz-Latn/uz-Cyrl/ru/en, reopened and text verified.
+- [x] Mobile: toasts move to the top while a dialog is open; dialogs rise above the on-screen keyboard (global --kb).
+- [x] New books and default chapter names follow the chosen language.
+- [x] RLS re-checked: every public table owner-only; cross-user read = 0 rows; users cannot write ai_usage.

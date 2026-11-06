@@ -11,6 +11,10 @@ import { exportPptx } from '../../src/services/export/pptx';
 import { exportEpub } from '../../src/services/export/epub';
 import { DEFAULT_EXPORT_OPTIONS } from '../../src/services/export/types';
 import { sampleBook } from './fixtures';
+import { setPdfFontLoader } from '../../src/services/export/pdfFonts';
+
+// In the app the fonts are fetched from public/fonts; here they are read from disk.
+setPdfFontLoader(async (file) => new Uint8Array(fs.readFileSync(path.resolve('public/fonts', file))));
 
 const OUT = path.resolve('.test-build/exports');
 fs.mkdirSync(OUT, { recursive: true });
@@ -30,7 +34,7 @@ test('PDF: valid document with cover, title page, TOC, chapters and metadata', a
   const file = save(out.filename, out.bytes);
   if (has('pdftotext')) {
     const txt = spawnSync('pdftotext', ['-layout', file, '-']).stdout.toString();
-    for (const s of ['Mundarija', 'Kirish: moliyaviy savodxonlik nima', 'Pul bilan ishlash odatlari', 'Asosiy g', 'Birinchi band', 'Lao Szi', 'Bosqich', 'Russkiy tekst']) {
+    for (const s of ['Mundarija', 'Kirish: moliyaviy savodxonlik nima', 'Pul bilan ishlash odatlari', 'Asosiy g', 'Birinchi band', 'Lao Szi', 'Bosqich', 'Русский текст для проверки']) {
       assert.ok(txt.includes(s), `PDF text should contain "${s}"`);
     }
     // chapter order
@@ -47,7 +51,7 @@ test('PDF: works without cover/toc and on A4', async () => {
   assert.ok(Math.abs(w - 595.28) < 1);
 });
 
-test('toWinAnsi maps Uzbek apostrophes and transliterates Cyrillic', () => {
+test('toWinAnsi (fallback only, when fonts cannot load) maps Uzbek apostrophes and transliterates Cyrillic', () => {
   assert.equal(toWinAnsi('oʻgʻil'), 'o‘g‘il');
   assert.equal(toWinAnsi('Книга'), 'Kniga');
   assert.equal(toWinAnsi('a→b'), 'a->b');

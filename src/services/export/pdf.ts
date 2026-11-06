@@ -1,15 +1,19 @@
 /**
  * PDF exporter (pdf-lib). Lays out the Bookly document model directly — no screenshots.
- * Phase 1 uses the 14 standard PDF fonts (WinAnsi). Characters outside WinAnsi are transliterated;
- * Phase 2 can embed a Unicode TTF through @pdf-lib/fontkit for full Cyrillic support.
+ * Text is drawn with embedded Unicode TrueType fonts (Bookly Serif/Sans/Mono, subsets of Liberation,
+ * metric-compatible with Times/Arial/Courier), so Cyrillic, Uzbek Latin (oʻ gʻ ʻ) and Russian stay real,
+ * copyable text. Only if the font files cannot be loaded does it fall back to the standard WinAnsi fonts
+ * with transliteration, so an export never fails because of fonts.
  */
 import { PDFDocument, PDFFont, PDFName, PDFPage, PDFArray, StandardFonts, rgb, type RGB } from 'pdf-lib';
 import type { Block, Book } from '../../models/book';
 import { isSingleText } from '../../models/book';
 import { fontById } from '../../models/templates';
 import { parseInline, type Run } from '../../utils/inline';
-import { audioNote, byLabel, chapterDisplayTitle, chapterLabel, exportFilename, tocLabel } from './common';
+import { audioNote, byLabel, chapterDisplayTitle, chapterLabel, exportFilename, isUzCyrillic, tocLabel } from './common';
 import { MIME, type ExportInput, type ExportOutput, type ResolvedAsset } from './types';
+import { loadPdfFont, pdfFontFile, type PdfFontKind, type PdfFontStyle } from './pdfFonts';
+import { miniFontkit, type TtfFont } from './ttf';
 
 const SIZES = { A4: [595.28, 841.89], A5: [419.53, 595.28], Letter: [612, 792] } as const;
 
@@ -44,16 +48,49 @@ function color(hex: string): RGB {
   return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
 }
 
-interface Family { regular: PDFFont; bold: PDFFont; italic: PDFFont; boldItalic: PDFFont }
+interface Family {
+  regular: PDFFont; bold: PDFFont; italic: PDFFont; boldItalic: PDFFont;
+  /** Prepares text for this family: Unicode fonts keep it, standard fonts get WinAnsi transliteration. */
+  enc: (s: string) => string;
+}
 
-async function family(doc: PDFDocument, kind: 'Times' | 'Helvetica' | 'Courier'): Promise<Family> {
+const STYLES: PdfFontStyle[] = ['Regular', 'Bold', 'Italic', 'BoldItalic'];
+
+/** Characters the embedded font lacks are replaced by close equivalents (never a missing-glyph box). */
+function unicodeEncoder(fonts: TtfFont[]): (s: string) => string {
+  const has = (cp: number) => fonts.every((f) => f.hasCodePoint(cp));
+  return (s: string) => {
+    let out = '';
+    for (const ch of s) {
+      const cp = ch.codePointAt(0)!;
+      if (cp === 0x09) { out += ' '; continue; }
+      if (cp < 0x20) continue;
+      if (has(cp)) { out += ch; continue; }
+      if (ch in REPL && [...REPL[ch]].every((c) => has(c.codePointAt(0)!))) { out += REPL[ch]; continue; }
+      const base = ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      out += base && base !== ch && [...base].every((c) => has(c.codePointAt(0)!)) ? base : '?';
+    }
+    return out;
+  };
+}
+
+async function family(doc: PDFDocument, kind: PdfFontKind): Promise<Family> {
+  try {
+    const bytes = await Promise.all(STYLES.map((st) => loadPdfFont(pdfFontFile(kind, st))));
+    doc.registerFontkit(miniFontkit as never);
+    const parsed = bytes.map((b) => miniFontkit.create(b));
+    const [regular, bold, italic, boldItalic] = await Promise.all(bytes.map((b) => doc.embedFont(b, { subset: true })));
+    return { regular, bold, italic, boldItalic, enc: unicodeEncoder(parsed) };
+  } catch (e) {
+    console.warn('[bookly] Unicode PDF fonts unavailable, using standard fonts', e);
+  }
   const map = {
     Times: [StandardFonts.TimesRoman, StandardFonts.TimesRomanBold, StandardFonts.TimesRomanItalic, StandardFonts.TimesRomanBoldItalic],
     Helvetica: [StandardFonts.Helvetica, StandardFonts.HelveticaBold, StandardFonts.HelveticaOblique, StandardFonts.HelveticaBoldOblique],
     Courier: [StandardFonts.Courier, StandardFonts.CourierBold, StandardFonts.CourierOblique, StandardFonts.CourierBoldOblique],
   }[kind];
   const [regular, bold, italic, boldItalic] = await Promise.all(map.map((f) => doc.embedFont(f)));
-  return { regular, bold, italic, boldItalic };
+  return { regular, bold, italic, boldItalic, enc: toWinAnsi };
 }
 
 const pick = (f: Family, b?: boolean, i?: boolean) => (b && i ? f.boldItalic : b ? f.bold : i ? f.italic : f.regular);
@@ -64,7 +101,7 @@ function tokenize(runs: Run[], fam: Family, size: number, forceBold = false, for
   const out: Token[] = [];
   for (const r of runs) {
     const font = pick(fam, r.bold || forceBold, r.italic || forceItalic);
-    const text = toWinAnsi(r.text);
+    const text = fam.enc(r.text);
     for (const part of text.split(/(\s+)/)) {
       if (!part) continue;
       const space = /^\s+$/.test(part);
@@ -194,21 +231,25 @@ export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
   const [W, H] = SIZES[options.pageSize] ?? SIZES.A5;
   const small = W < 500;
   const margin = small ? { top: 58, bottom: 62, left: 50, right: 50 } : { top: 72, bottom: 72, left: 68, right: 68 };
-  const body = await family(doc, fontById(book.theme.bodyFont).pdf);
-  const head = await family(doc, fontById(book.theme.headingFont).pdf);
-  const ui = await family(doc, 'Helvetica');
+  // one embedded font set per family, shared by body/headings/UI text
+  const families = new Map<PdfFontKind, Promise<Family>>();
+  const fam = (k: PdfFontKind) => { let f = families.get(k); if (!f) { f = family(doc, k); families.set(k, f); } return f; };
+  const body = await fam(fontById(book.theme.bodyFont).pdf);
+  const head = await fam(fontById(book.theme.headingFont).pdf);
+  const ui = await fam('Helvetica');
   const ink = color(book.theme.ink || '#1c1b29');
   const accent = color(book.theme.accent || '#4f46e5');
   const muted = rgb(0.45, 0.45, 0.5);
   const base = (book.theme.baseSize || 12) * (small ? 0.88 : 1);
 
-  doc.setTitle(toWinAnsi(book.title));
-  doc.setAuthor(toWinAnsi(book.author || 'Bookly'));
-  doc.setSubject(toWinAnsi(book.description || book.subtitle || ''));
-  doc.setKeywords(book.metadata.keywords.map(toWinAnsi));
+  // Document metadata is stored as UTF-16 by pdf-lib — no transliteration needed.
+  doc.setTitle(book.title);
+  doc.setAuthor(book.author || 'Bookly');
+  doc.setSubject(book.description || book.subtitle || '');
+  doc.setKeywords(book.metadata.keywords);
   doc.setCreator('Bookly 2.0');
   doc.setProducer('Bookly 2.0 (pdf-lib)');
-  doc.setLanguage(book.language === 'uz' ? 'uz-Latn' : book.language);
+  doc.setLanguage(book.language === 'uz' ? (isUzCyrillic(book) ? 'uz-Cyrl' : 'uz-Latn') : book.language);
   doc.setCreationDate(new Date(book.createdAt));
   doc.setModificationDate(new Date(book.updatedAt));
 
@@ -235,7 +276,7 @@ export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
         for (const t of l) { if (!t.space) p.drawText(t.text, { x, y, size: t.size, font: t.font, color: tc }); x += t.width; }
         y -= small ? 32 : 42;
       }
-      const au = toWinAnsi(book.cover.author || book.author);
+      const au = head.enc(book.cover.author || book.author);
       if (au) p.drawText(au, { x: (W - head.regular.widthOfTextAtSize(au, 13)) / 2, y: H * 0.18, size: 13, font: head.regular, color: tc });
     }
   }
@@ -397,7 +438,7 @@ export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
     p.drawText(num, { x: (W - ui.regular.widthOfTextAtSize(num, 8.5)) / 2, y: margin.bottom / 2 - 4, size: 8.5, font: ui.regular, color: muted });
     if (meta && meta.chapter !== null && !chapterStart.includes(i)) {
       if (single) continue;
-      const label = toWinAnsi(chapterDisplayTitle(book, book.chapters[meta.chapter], meta.chapter)).slice(0, 70);
+      const label = ui.enc(chapterDisplayTitle(book, book.chapters[meta.chapter], meta.chapter)).slice(0, 70);
       p.drawText(label, { x: margin.left, y: H - margin.top / 2, size: 7.5, font: ui.italic, color: muted });
       p.drawLine({ start: { x: margin.left, y: H - margin.top / 2 - 5 }, end: { x: W - margin.right, y: H - margin.top / 2 - 5 }, thickness: 0.4, color: rgb(0.85, 0.85, 0.9) });
     }
@@ -409,7 +450,7 @@ export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
       const p = doc.insertPage(titlePageIndex + 1 + t, [W, H]);
       let y = H - margin.top;
       if (t === 0) {
-        const label = toWinAnsi(tocLabel(book));
+        const label = head.enc(tocLabel(book));
         p.drawText(label, { x: margin.left, y: y - 22, size: 22, font: head.bold, color: ink });
         p.drawRectangle({ x: margin.left, y: y - 34, width: 32, height: 2.5, color: accent });
       }
@@ -421,10 +462,10 @@ export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
         const num = String(targetIdx + 1);
         const size = base * 0.95;
         const numW = ui.regular.widthOfTextAtSize(num, size);
-        let title = `${ci + 1}. ${toWinAnsi(chapterDisplayTitle(book, ch, ci))}`;
+        let title = `${ci + 1}. ${body.enc(chapterDisplayTitle(book, ch, ci))}`;
         const maxW = W - margin.left - margin.right - numW - 24;
         while (body.regular.widthOfTextAtSize(title, size) > maxW && title.length > 4) title = title.slice(0, -2);
-        if (title !== `${ci + 1}. ${toWinAnsi(chapterDisplayTitle(book, ch, ci))}`) title = title.trimEnd() + '…';
+        if (title !== `${ci + 1}. ${body.enc(chapterDisplayTitle(book, ch, ci))}`) title = title.trimEnd() + '…';
         p.drawText(title, { x: margin.left, y, size, font: body.regular, color: ink });
         const tw = body.regular.widthOfTextAtSize(title, size);
         for (let dx = margin.left + tw + 6; dx < W - margin.right - numW - 6; dx += 4) p.drawText('.', { x: dx, y, size: size * 0.8, font: ui.regular, color: rgb(0.7, 0.7, 0.75) });

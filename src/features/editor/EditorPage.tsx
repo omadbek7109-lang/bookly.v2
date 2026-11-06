@@ -10,10 +10,10 @@ import {
 import type { MessageKey } from '../../i18n';
 import { books } from '../../services/storage/repository';
 import { syncCoverText } from '../../services/cover/renderCover';
-import { useKeyboardInset } from '../../hooks/useAssetUrl';
 import { plainText, sanitizeInline, textToInline } from '../../utils/inline';
 import { AssistantSheet, type ApplyMode, type AssistantTarget } from '../ai-assistant/AssistantSheet';
 import { useWritingAssistant } from '../ai-assistant/useAssistant';
+import { chapterLabel } from '../../services/export/common';
 import { ChapterContent } from '../reader/BookContent';
 import { BlockView, placeCaret, type BlockHandlers } from './blocks';
 import { useEditorState, type SaveStatus } from './useEditorState';
@@ -44,14 +44,14 @@ export default function EditorPage({ bookId }: { bookId: string }) {
 
 type SheetName = null | 'chapters' | 'format' | 'insert' | 'assistant' | 'block' | 'details' | 'preview';
 
-interface InsertItem { id: string; type: BlockType; icon: IconName; label: string; hint?: string; init?: Partial<Block> }
+interface InsertItem { id: string; type: BlockType; icon: IconName; label: MessageKey; hint: MessageKey; init?: Partial<Block> }
 /** The "+" menu: the five everyday blocks first, the rest behind "Boshqa bloklar". */
 const MAIN_INSERTS: InsertItem[] = [
-  { id: 'heading', type: 'heading', icon: 'heading', label: 'Sarlavha', hint: 'Katta bo‘lim nomi', init: { level: 1 } as Partial<Block> },
-  { id: 'subheading', type: 'heading', icon: 'type', label: 'Kichik sarlavha', hint: 'Bo‘lim ichidagi nom', init: { level: 2 } as Partial<Block> },
-  { id: 'paragraph', type: 'paragraph', icon: 'alignLeft', label: 'Oddiy matn', hint: 'Yangi paragraf' },
-  { id: 'quote', type: 'quote', icon: 'quote', label: 'Iqtibos', hint: 'Kimningdir so‘zlari' },
-  { id: 'image', type: 'image', icon: 'image', label: 'Rasm', hint: 'Galereyadan yuklash' },
+  { id: 'heading', type: 'heading', icon: 'heading', label: 'insert.heading', hint: 'insert.headingHint', init: { level: 1 } as Partial<Block> },
+  { id: 'subheading', type: 'heading', icon: 'type', label: 'insert.subheading', hint: 'insert.subheadingHint', init: { level: 2 } as Partial<Block> },
+  { id: 'paragraph', type: 'paragraph', icon: 'alignLeft', label: 'insert.paragraph', hint: 'insert.paragraphHint' },
+  { id: 'quote', type: 'quote', icon: 'quote', label: 'insert.quote', hint: 'insert.quoteHint' },
+  { id: 'image', type: 'image', icon: 'image', label: 'insert.image', hint: 'insert.imageHint' },
 ];
 const INSERTS: { type: BlockType; icon: IconName; label: MessageKey; init?: Partial<Block> }[] = [
   { type: 'list', icon: 'list', label: 'editor.block.list' },
@@ -70,7 +70,6 @@ function Editor({ initial }: { initial: Book }) {
   const { t } = useSettings();
   const { confirm, prompt, toast } = useUi();
   const route = useRoute();
-  useKeyboardInset();
   const ed = useEditorState(initial);
   const { book, update } = ed;
   const [chapterId, setChapterId] = useState(() => {
@@ -212,7 +211,7 @@ function Editor({ initial }: { initial: Book }) {
   };
   const addChapter = () => {
     // "N-bob" is only a starting suggestion: the title field opens selected so the writer can type their own.
-    const c = createChapter(`${book.chapters.length + 1}-bob`);
+    const c = createChapter(chapterLabel(book, book.chapters.length));
     update((b) => {
       const idx = b.chapters.findIndex((x) => x.id === chapterId);
       const list = [...b.chapters]; list.splice(idx + 1, 0, c);
@@ -285,7 +284,7 @@ function Editor({ initial }: { initial: Book }) {
         if (blk && isEmptyText(blk)) c.splice(i, 1, ...nbs); else c.splice(i + 1, 0, ...nbs);
         return c;
       });
-      toast('Matnga qo‘shildi', 'success');
+      toast(t('assist.inserted'), 'success');
       return;
     }
     // replace — selection-level when possible, otherwise the whole block
@@ -301,34 +300,34 @@ function Editor({ initial }: { initial: Book }) {
       }, 60);
     } else if (isText(blk)) replaceBlock({ ...blk, html: textToInline(text) });
     else if (blk.type === 'list') replaceBlock({ ...blk, items: text.split('\n').filter(Boolean).map(textToInline) });
-    toast('Matn almashtirildi', 'success');
+    toast(t('assist.replaced'), 'success');
   };
 
   // ---------------------------------------------------------------- book structure (chapters ⇄ one continuous text)
   const setLayout = async (to: 'chapters' | 'single') => {
     if (to === (single ? 'single' : 'chapters')) return;
     if (to === 'chapters') {
-      update((b) => ({ ...b, metadata: { ...b.metadata, layout: 'chapters' }, chapters: b.chapters.map((c, i) => (c.title.trim() ? c : { ...c, title: `${i + 1}-bob` })) }));
-      toast('Endi kitob boblardan iborat', 'success');
+      update((b) => ({ ...b, metadata: { ...b.metadata, layout: 'chapters' }, chapters: b.chapters.map((c, i) => (c.title.trim() ? c : { ...c, title: chapterLabel(b, i) })) }));
+      toast(t('layout.nowChapters'), 'success');
       return;
     }
     if (book.chapters.length > 1) {
       const ok = await confirm({
-        title: 'Bitta yaxlit matnga o‘tkazish',
-        message: `${book.chapters.length} ta bob bitta uzluksiz matnga birlashtiriladi. Bob nomlari matn ichida sarlavha bo‘lib qoladi — hech qaysi matn o‘chmaydi. Davom etamizmi?`,
-        confirmLabel: 'Birlashtirish',
+        title: t('layout.toSingleTitle'),
+        message: t('layout.toSingleText', { n: book.chapters.length }),
+        confirmLabel: t('layout.merge'),
       });
       if (!ok) return;
     }
     update((b) => {
       const blocks: Block[] = b.chapters.length > 1
-        ? b.chapters.flatMap((c, i) => [createBlock('heading', { level: 1, html: textToInline(c.title.trim() || `${i + 1}-bob`) }), ...c.blocks])
+        ? b.chapters.flatMap((c, i) => [createBlock('heading', { level: 1, html: textToInline(c.title.trim() || chapterLabel(b, i)) }), ...c.blocks])
         : b.chapters[0].blocks;
       const merged = { ...b.chapters[0], blocks, updatedAt: Date.now() };
       return { ...b, metadata: { ...b.metadata, layout: 'single' }, chapters: [merged] };
     });
     setChapterId(book.chapters[0].id);
-    toast('Endi kitob bitta yaxlit matn', 'success');
+    toast(t('layout.nowSingle'), 'success');
   };
 
   // ---------------------------------------------------------------- keyboard shortcuts
@@ -351,7 +350,7 @@ function Editor({ initial }: { initial: Book }) {
     <div className={`editor ${single ? 'is-single' : ''}`} data-testid="editor" data-layout={single ? 'single' : 'chapters'}>
       <header className="editor-bar">
         <IconButton icon="chevronLeft" label={t('common.back')} onClick={() => { void ed.saveNow(); back(routes.books()); }} />
-        <button type="button" className="editor-booktitle" onClick={() => setSheet('details')} data-testid="editor-details" aria-label="Kitob tafsilotlari">
+        <button type="button" className="editor-booktitle" onClick={() => setSheet('details')} data-testid="editor-details" aria-label={t('editor.details')}>
           <strong>{book.title}</strong>
           <SaveChip status={ed.status} onRetry={() => void ed.saveNow()} />
         </button>
@@ -370,17 +369,17 @@ function Editor({ initial }: { initial: Book }) {
 
         <div className="editor-main">
           {!single && (
-            <button type="button" className="chapter-picker glass" onClick={() => setSheet('chapters')} data-testid="chapter-picker" aria-label="Boblar ro‘yxati">
+            <button type="button" className="chapter-picker glass" onClick={() => setSheet('chapters')} data-testid="chapter-picker" aria-label={t('editor.chapterList')}>
               <Icon name="list" size={18} />
-              <span><b>{chIndex + 1}/{book.chapters.length}</b> {chapter.title || `${chIndex + 1}-bob`}</span>
-              <small>Boblar</small>
+              <span><b>{chIndex + 1}/{book.chapters.length}</b> {chapter.title || chapterLabel(book, chIndex)}</span>
+              <small>{t('editor.chapters')}</small>
               <Icon name="chevronDown" size={18} />
             </button>
           )}
 
           <div className="page-paper">
             {!single && (
-              <textarea key={chapter.id} className="chapter-title-input" rows={1} value={chapter.title} placeholder="Bob nomini yozing" aria-label={t('editor.chapterTitlePh')}
+              <textarea key={chapter.id} className="chapter-title-input" rows={1} value={chapter.title} placeholder={t('editor.chapterTitleWrite')} aria-label={t('editor.chapterTitlePh')}
                 ref={fitTitle}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const first = chapter.blocks[0]; if (first) { focusBlock(first.id, 'start'); setActive(first.id); } } }}
                 onChange={(e) => { fitTitle(e.target); mutateChapter((c) => ({ ...c, title: e.target.value.replace(/\n/g, ' ') }), `title:${chapter.id}`); }} data-testid="chapter-title" />
@@ -393,14 +392,14 @@ function Editor({ initial }: { initial: Book }) {
         </div>
       </div>
 
-      <nav className="editor-toolbar" aria-label="Muharrir asboblari" onMouseDown={(e) => { if ((e.target as HTMLElement).closest('.keep-focus')) e.preventDefault(); }}>
-        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('bold')} aria-label="Qalin (B)" title="Qalin" data-testid="fmt-bold"><Icon name="bold" size={20} /></button>
-        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('italic')} aria-label="Kursiv (I)" title="Kursiv" data-testid="fmt-italic"><Icon name="italic" size={20} /></button>
-        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('underline')} aria-label="Tagiga chizish (U)" title="Tagiga chizish" data-testid="fmt-underline"><Icon name="underline" size={20} /></button>
+      <nav className="editor-toolbar" aria-label={t('editor.toolbar')} onMouseDown={(e) => { if ((e.target as HTMLElement).closest('.keep-focus')) e.preventDefault(); }}>
+        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('bold')} aria-label={t('editor.boldB')} title={t('editor.bold')} data-testid="fmt-bold"><Icon name="bold" size={20} /></button>
+        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('italic')} aria-label={t('editor.italicI')} title={t('editor.italic')} data-testid="fmt-italic"><Icon name="italic" size={20} /></button>
+        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('underline')} aria-label={t('editor.underlineU')} title={t('editor.underline')} data-testid="fmt-underline"><Icon name="underline" size={20} /></button>
         <span className="tb-sep" />
-        <button type="button" className="tb-btn tb-labeled" onClick={() => setSheet('insert')} data-testid="insert-sheet"><Icon name="plus" size={20} /><span>Qo‘shish</span></button>
+        <button type="button" className="tb-btn tb-labeled" onClick={() => setSheet('insert')} data-testid="insert-sheet"><Icon name="plus" size={20} /><span>{t('editor.insert')}</span></button>
         {(ai.status === 'ready' || ai.status === 'needs-login' || ai.status === 'demo') && (
-          <button type="button" className="tb-btn tb-labeled tb-ai keep-focus" onClick={openAssistant} data-testid="ai-open"><Icon name="sparkles" size={20} /><span>AI yordamchi</span></button>
+          <button type="button" className="tb-btn tb-labeled tb-ai keep-focus" onClick={openAssistant} data-testid="ai-open"><Icon name="sparkles" size={20} /><span>{t('editor.ai')}</span></button>
         )}
       </nav>
 
@@ -409,16 +408,16 @@ function Editor({ initial }: { initial: Book }) {
         <ChapterList book={book} current={chapter.id} onSelect={(id) => { selectChapter(id); setSheet(null); }} onAdd={addChapter} onRename={renameChapter} onDelete={deleteChapter} onMove={moveChapter} />
       </Sheet>
 
-      <Sheet open={sheet === 'insert'} onClose={() => { setSheet(null); setMoreInserts(false); }} title="Qo‘shish" size="sm">
+      <Sheet open={sheet === 'insert'} onClose={() => { setSheet(null); setMoreInserts(false); }} title={t('editor.insert')} size="sm">
         <div className="insert-menu" role="menu">
           {MAIN_INSERTS.map((x) => (
             <button key={x.id} type="button" role="menuitem" className="insert-row" data-testid={`insert-${x.id}`} onClick={() => insertFromMenu(x.type, x.init)}>
               <span className="insert-ic"><Icon name={x.icon} size={20} /></span>
-              <span className="insert-txt"><strong>{x.label}</strong>{x.hint && <small>{x.hint}</small>}</span>
+              <span className="insert-txt"><strong>{t(x.label)}</strong><small>{t(x.hint)}</small></span>
             </button>
           ))}
           <button type="button" className="insert-more" aria-expanded={moreInserts} onClick={() => setMoreInserts((v) => !v)} data-testid="insert-more">
-            <Icon name={moreInserts ? 'chevronUp' : 'chevronDown'} size={16} /> Boshqa bloklar
+            <Icon name={moreInserts ? 'chevronUp' : 'chevronDown'} size={16} /> {t('insert.more')}
           </button>
           {moreInserts && (
             <div className="insert-grid">
@@ -463,8 +462,9 @@ function Editor({ initial }: { initial: Book }) {
 }
 
 function SaveChip({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
+  const { t } = useSettings();
   const map: Record<SaveStatus, [string, IconName]> = {
-    saved: ['Saqlandi', 'check'], saving: ['Saqlanmoqda…', 'clock'], dirty: ['Saqlanmoqda…', 'clock'], error: ['Saqlashda xatolik — qayta urinish', 'alert'],
+    saved: [t('common.saved'), 'check'], saving: [t('common.saving'), 'clock'], dirty: [t('common.saving'), 'clock'], error: [t('editor.saveErrorRetry'), 'alert'],
   };
   const [label, icon] = map[status];
   return (
@@ -520,7 +520,7 @@ function ChapterList({ book, current, onSelect, onAdd, onRename, onDelete, onMov
           <li key={c.id} className={c.id === current ? 'is-current' : ''}>
             <button type="button" className="ch-select" onClick={() => onSelect(c.id)} aria-current={c.id === current ? 'true' : undefined}>
               <span className="ch-num">{i + 1}</span>
-              <span className="ch-text"><span>{c.title || `${i + 1}-bob`}</span><small>{t('editor.words', { n: chapterWordCount(c) })}</small></span>
+              <span className="ch-text"><span>{c.title || chapterLabel(book, i)}</span><small>{t('editor.words', { n: chapterWordCount(c) })}</small></span>
             </button>
             <span className="ch-tools">
               <IconButton icon="edit" label={t('common.rename')} onClick={() => onRename(c)} size={16} />
@@ -559,14 +559,14 @@ function BookDetails({ book, single, onLayout, onChange, onSaved }: { book: Book
           <select id="d-lang" className="input" value={book.language} onChange={(e) => set({ language: e.target.value as BookLanguage })}>{(['uz', 'en', 'ru'] as const).map((l) => <option key={l} value={l}>{t(`lang.${l}` as MessageKey)}</option>)}</select>
         </Field>
       </div>
-      <Field label="Kitob tuzilishi" hint={single ? 'Boblarsiz, bitta uzluksiz matn.' : `${book.chapters.length} ta bob. Bitta matnga o‘tkazilsa, bob nomlari sarlavha bo‘lib qoladi.`}>
-        <Segmented value={single ? 'single' : 'chapters'} label="Kitob tuzilishi" onChange={(v) => onLayout(v as 'chapters' | 'single')}
-          options={[{ value: 'chapters', label: 'Boblar bilan', icon: 'list' }, { value: 'single', label: 'Bitta yaxlit matn', icon: 'file' }]} />
+      <Field label={t('layout.label')} hint={single ? t('layout.singleHint') : t('layout.chaptersHint', { n: book.chapters.length })}>
+        <Segmented value={single ? 'single' : 'chapters'} label={t('layout.label')} onChange={(v) => onLayout(v as 'chapters' | 'single')}
+          options={[{ value: 'chapters', label: t('create.layout.chapters'), icon: 'list' }, { value: 'single', label: t('create.layout.single'), icon: 'file' }]} />
       </Field>
       <Field label={t('editor.status')}>
         <Segmented value={book.status} label={t('editor.status')} onChange={(v) => set({ status: v })} options={[{ value: 'draft', label: t('status.draft') }, { value: 'completed', label: t('status.completed'), icon: 'check' }]} />
       </Field>
-      <Field label="Kalit so‘zlar" htmlFor="d-kw" hint="Vergul bilan ajrating">
+      <Field label={t('editor.keywords')} htmlFor="d-kw" hint={t('editor.keywordsHint')}>
         <input id="d-kw" className="input" value={book.metadata.keywords.join(', ')} onChange={(e) => onChange((b) => ({ ...b, metadata: { ...b.metadata, keywords: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) } }))} />
       </Field>
       <div className="row-actions wrap">

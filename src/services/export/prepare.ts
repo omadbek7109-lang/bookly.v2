@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 /** Browser-side preparation: reads assets from IndexedDB, normalises images, renders the cover. */
 import { collectAssetIds, type Book } from '../../models/book';
 import { renderCoverBlob } from '../cover/renderCover';
@@ -102,7 +103,7 @@ export async function downloadBlob(blob: Blob, filename: string): Promise<SaveOu
 }
 
 export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n < 1024) return `${n} ${tr('unit.b')}`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} ${tr('unit.kb')}`;
+  return `${(n / 1024 / 1024).toFixed(1)} ${tr('unit.mb')}`;
 }

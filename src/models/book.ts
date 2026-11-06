@@ -5,6 +5,7 @@
  * reads from this single schema. Bump SCHEMA_VERSION and extend `migrateBook` when it changes.
  */
 import { uid } from '../utils/id';
+import { tr } from '../i18n';
 import { countWords, plainText } from '../utils/inline';
 
 export const SCHEMA_VERSION = 1;
@@ -178,9 +179,12 @@ export interface NewBookInput {
   layout?: BookLayout;
 }
 
+/** Default name of the first chapter in the book's own language. */
+const firstChapterName = (l: BookLanguage) => (l === 'en' ? 'Chapter 1' : l === 'ru' ? 'Глава 1' : '1-bob');
+
 export function createBook(input: NewBookInput = {}): Book {
   const now = Date.now();
-  const title = input.title?.trim() || 'Nomsiz kitob';
+  const title = input.title?.trim() || tr('common.untitled');
   const author = input.author?.trim() || '';
   const cover = defaultCover(title, author);
   cover.subtitle = input.subtitle ?? '';
@@ -195,7 +199,7 @@ export function createBook(input: NewBookInput = {}): Book {
     category: input.category ?? 'other',
     cover,
     theme: { ...DEFAULT_THEME },
-    chapters: input.chapters && input.chapters.length ? input.chapters : [createChapter(input.layout === 'single' ? '' : '1-bob')],
+    chapters: input.chapters && input.chapters.length ? input.chapters : [createChapter(input.layout === 'single' ? '' : firstChapterName(input.language ?? 'uz'))],
     metadata: {
       keywords: [], audience: input.audience ?? '', tone: input.tone ?? 'educational', publisher: '', isbn: '', rights: '',
       source: input.source ?? 'manual', targetChapters: input.targetChapters ?? (input.chapters?.length || 1),
@@ -277,10 +281,10 @@ type Raw = Record<string, unknown>;
  * v0 = legacy Bookly Mini shape ({ title, chapters: [{ title, content: string }] } or { title, content }).
  */
 export function migrateBook(input: unknown): Book {
-  if (!input || typeof input !== 'object') throw new Error('Kitob maʼlumoti noto‘g‘ri');
+  if (!input || typeof input !== 'object') throw new Error(tr('book.invalid'));
   const raw = input as Raw;
   const version = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
-  if (version > SCHEMA_VERSION) throw new Error(`Kitob yangiroq Bookly versiyasida yaratilgan (schema ${version})`);
+  if (version > SCHEMA_VERSION) throw new Error(tr('book.newer', { v: version }));
   let book: Book = version === 0 ? fromLegacy(raw) : (raw as unknown as Book);
   book = fillDefaults(book);
   return book;

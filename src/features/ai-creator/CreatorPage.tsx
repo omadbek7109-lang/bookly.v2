@@ -6,6 +6,7 @@ import { Button, DemoBadge, Field, IconButton, PageHeader, ProgressBar } from '.
 import { createBook, createChapter, defaultCover, blockText, type Block, type BookCategory, type BookLanguage, type WritingTone } from '../../models/book';
 import { templateById, TEMPLATES } from '../../models/templates';
 import type { MessageKey } from '../../i18n';
+import { chapterLabelLang } from '../../services/export/common';
 import { getTextAI, type BookBrief, type BookOutline } from '../../services/ai';
 import { books } from '../../services/storage/repository';
 import { applyTemplate, templateCover } from '../templates/TemplatesPage';
@@ -25,7 +26,7 @@ export default function CreatorPage() {
   const { t, settings } = useSettings();
   const { toast } = useUi();
   const [step, setStep] = useState<Step>('idea');
-  const [brief, setBrief] = useState<BookBrief>({ topic: '', title: '', language: 'uz', category: 'education', audience: '', tone: 'educational', chapters: 6, description: '', instructions: '', author: settings.profile.name });
+  const [brief, setBrief] = useState<BookBrief>({ topic: '', title: '', language: settings.locale, category: 'education', audience: '', tone: 'educational', chapters: 6, description: '', instructions: '', author: settings.profile.name });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [outline, setOutline] = useState<BookOutline | null>(null);
   const [busy, setBusy] = useState(false);
@@ -77,7 +78,7 @@ export default function CreatorPage() {
     return { ...o, chapters: c };
   });
   const removeChapter = (i: number) => setOutline((o) => o && o.chapters.length > 1 ? { ...o, chapters: o.chapters.filter((_, k) => k !== i) } : o);
-  const addChapter = () => setOutline((o) => o && { ...o, chapters: [...o.chapters, { title: `${o.chapters.length + 1}-bob`, summary: '' }] });
+  const addChapter = () => setOutline((o) => o && { ...o, chapters: [...o.chapters, { title: chapterLabelLang(brief.language, o.chapters.length), summary: '' }] });
 
   const write = async (from = 0) => {
     if (!outline) return;
@@ -197,7 +198,7 @@ export default function CreatorPage() {
                 {outline.chapters.map((c, i) => (
                   <li key={i}>
                     <span className="outline-num">{i + 1}</span>
-                    <input className="input" value={c.title} onChange={(e) => editChapter(i, e.target.value)} aria-label={`${i + 1}-bob`} />
+                    <input className="input" value={c.title} onChange={(e) => editChapter(i, e.target.value)} aria-label={t('editor.chapterN', { n: i + 1 })} />
                     <IconButton icon="arrowUp" label={t('editor.moveUp')} onClick={() => moveChapter(i, -1)} disabled={i === 0} size={18} />
                     <IconButton icon="arrowDown" label={t('editor.moveDown')} onClick={() => moveChapter(i, 1)} disabled={i === outline.chapters.length - 1} size={18} />
                     <IconButton icon="x" label={t('common.delete')} onClick={() => removeChapter(i)} disabled={outline.chapters.length <= 1} size={18} />

@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 /**
  * Cloud backup & sync engine (local-first).
  *
@@ -196,7 +197,7 @@ export class SyncEngine {
     } else {
       if (choice === 'both' && local) {
         // Keep this device's version as a separate book before taking the cloud copy.
-        const copy = duplicateBook(local, ' (bu qurilma)');
+        const copy = duplicateBook(local, ` (${tr('conflict.thisDevice')})`);
         copy.favorite = local.favorite;
         await this.books.save(copy, { touch: false });
       }

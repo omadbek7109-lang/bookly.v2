@@ -928,3 +928,8 @@ button.list-row:hover { background: var(--accent-soft); }
 .profile-edit-btn { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 32px; padding: 0 2px; color: var(--primary); font-weight: 650; font-size: 13.5px; }
 .profile .segmented button { white-space: normal; line-height: 1.15; text-align: center; }
 @media (max-width: 400px) { .profile .segmented button svg { display: none; } }
+
+/* ---- Mobile stability: sheets sit above the on-screen keyboard; toasts never cover an open sheet */
+.sheet-root { bottom: var(--kb, 0px); transition: bottom .15s ease; }
+body.no-scroll .toasts { top: calc(var(--safe-t, env(safe-area-inset-top, 0px)) + 10px); bottom: auto; }
+.sheet-body :is(input, textarea, select):focus { scroll-margin: 24px; }

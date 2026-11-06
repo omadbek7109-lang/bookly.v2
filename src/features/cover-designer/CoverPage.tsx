@@ -5,7 +5,7 @@ import { BookCover } from '../../components/BookCover';
 import { Icon } from '../../components/Icon';
 import { Button, DemoBadge, EmptyState, Field, ListRow, PageHeader, Segmented, Spinner } from '../../components/ui';
 import type { Book, CoverDesign } from '../../models/book';
-import { COVER_TEMPLATES, FONTS, PALETTES } from '../../models/templates';
+import { COVER_TEMPLATES, coverTemplateName, fontLabel, FONTS, PALETTES, paletteLabel } from '../../models/templates';
 import type { MessageKey } from '../../i18n';
 import { getImageAI, type CoverStyle } from '../../services/ai';
 import { COVER_RATIO, loadAssetImage, renderCover, renderCoverBlob } from '../../services/cover/renderCover';
@@ -143,7 +143,7 @@ function Designer({ book }: { book: Book }) {
               <Field label={t('cover.subtitle')} htmlFor="cv-sub"><input id="cv-sub" className="input" value={cover.subtitle} onChange={(e) => set({ subtitle: e.target.value })} /></Field>
               <Field label={t('cover.author')} htmlFor="cv-author"><input id="cv-author" className="input" value={cover.author} onChange={(e) => set({ author: e.target.value })} /></Field>
               <Field label={t('cover.font')}>
-                <div className="chips">{FONTS.map((f) => <button key={f.id} type="button" className={`chip-btn ${cover.fontId === f.id ? 'is-active' : ''}`} style={{ fontFamily: f.css, fontWeight: f.weight > 600 ? 700 : 500 }} onClick={() => set({ fontId: f.id })}>{f.label}</button>)}</div>
+                <div className="chips">{FONTS.map((f) => <button key={f.id} type="button" className={`chip-btn ${cover.fontId === f.id ? 'is-active' : ''}`} style={{ fontFamily: f.css, fontWeight: f.weight > 600 ? 700 : 500 }} onClick={() => set({ fontId: f.id })}>{fontLabel(f)}</button>)}</div>
               </Field>
             </div>
           )}
@@ -156,7 +156,7 @@ function Designer({ book }: { book: Book }) {
                   return (
                     <button key={ct.id} type="button" className={`cover-tpl ${cover.templateId === ct.id ? 'is-active' : ''}`} data-testid={`cover-tpl-${ct.id}`}
                       onClick={() => { set({ templateId: ct.id, layout: ct.layout, fontId: ct.fontId, textColor: cover.background.kind === 'image' ? cover.textColor : pal.text, accentColor: pal.accent }); if (cover.background.kind !== 'image') setBg({ colors: pal.colors, kind: 'gradient' }); }}>
-                      <BookCover cover={preview} width={90} /><span>{ct.name}</span>
+                      <BookCover cover={preview} width={90} /><span>{coverTemplateName(ct)}</span>
                     </button>
                   );
                 })}
@@ -171,7 +171,7 @@ function Designer({ book }: { book: Book }) {
               <Field label={t('cover.palette')}>
                 <div className="palette-grid">
                   {PALETTES.map((p) => (
-                    <button key={p.id} type="button" className={`palette ${cover.background.colors[0] === p.colors[0] && cover.background.colors[1] === p.colors[1] ? 'is-active' : ''}`} title={p.label} aria-label={p.label}
+                    <button key={p.id} type="button" className={`palette ${cover.background.colors[0] === p.colors[0] && cover.background.colors[1] === p.colors[1] ? 'is-active' : ''}`} title={paletteLabel(p)} aria-label={paletteLabel(p)}
                       style={{ background: `linear-gradient(135deg, ${p.colors[0]}, ${p.colors[1]})` }} onClick={() => { setBg({ colors: p.colors, kind: cover.background.kind === 'image' ? 'image' : cover.background.kind }); set({ textColor: cover.background.kind === 'image' ? cover.textColor : p.text, accentColor: p.accent }); }} data-testid={`palette-${p.id}`} />
                   ))}
                 </div>

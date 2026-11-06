@@ -4,7 +4,7 @@ import { back, navigate, routes } from '../../app/router';
 import { BookCover } from '../../components/BookCover';
 import { Button, ListRow, PageHeader, Segmented, Sheet } from '../../components/ui';
 import { createBlock, createBook, createChapter, defaultCover, type Book, type BookCategory, type CoverDesign } from '../../models/book';
-import { fontById, TEMPLATE_CATEGORIES, TEMPLATES, type DesignTemplate } from '../../models/templates';
+import { fontById, templateDesc, templateName, TEMPLATE_CATEGORIES, TEMPLATES, type DesignTemplate } from '../../models/templates';
 import type { MessageKey } from '../../i18n';
 import { books } from '../../services/storage/repository';
 
@@ -62,29 +62,29 @@ export function TemplatesView() {
       <div className="template-grid" data-testid="template-grid">
         {list.map((tpl) => (
           <button key={tpl.id} type="button" className="template-card glass" onClick={() => setPreview(tpl)} data-testid={`tpl-${tpl.id}`}>
-            <BookCover cover={templateCover(tpl, { ...defaultCover(tpl.name, 'Bookly'), subtitle: t(`category.${tpl.category}` as MessageKey) })} width={150} />
-            <strong>{tpl.name}</strong>
+            <BookCover cover={templateCover(tpl, { ...defaultCover(templateName(tpl), 'Bookly'), subtitle: t(`category.${tpl.category}` as MessageKey) })} width={150} />
+            <strong>{templateName(tpl)}</strong>
             <small>{t(`category.${tpl.category}` as MessageKey)}</small>
           </button>
         ))}
       </div>
 
-      <Sheet open={!!preview && !picking} onClose={() => setPreview(null)} title={preview?.name} size="md"
+      <Sheet open={!!preview && !picking} onClose={() => setPreview(null)} title={preview ? templateName(preview) : undefined} size="md"
         footer={preview && <>
           <Button variant="secondary" icon="layers" onClick={() => setPicking(true)} disabled={!live.length} data-testid="tpl-apply-existing">{t('templates.applyTo')}</Button>
           <Button icon="plus" onClick={() => void newWith(preview)} data-testid="tpl-new-book">{t('templates.newBook')}</Button>
         </>}>
         {preview && (
           <div className="tpl-preview">
-            <BookCover cover={templateCover(preview, { ...defaultCover(preview.name, 'Bookly'), subtitle: preview.description })} width={150} />
+            <BookCover cover={templateCover(preview, { ...defaultCover(templateName(preview), 'Bookly'), subtitle: templateDesc(preview) })} width={150} />
             <div className="tpl-sample" style={{ background: preview.theme.paper, color: preview.theme.ink }}>
               <small style={{ color: preview.theme.accent }}>1-BOB</small>
               <h3 style={{ fontFamily: fontById(preview.theme.headingFont).css }}>{t('templates.sampleHeading')}</h3>
               <span className="tpl-rule" style={{ background: preview.theme.accent }} />
               <p style={{ fontFamily: fontById(preview.theme.bodyFont).css, fontSize: `${preview.theme.baseSize + 3}px` }}>{t('templates.sampleText')}</p>
-              <blockquote style={{ borderColor: preview.theme.accent, fontFamily: fontById(preview.theme.bodyFont).css }}>Ming chaqirimlik yo‘l ham bir qadamdan boshlanadi.</blockquote>
+              <blockquote style={{ borderColor: preview.theme.accent, fontFamily: fontById(preview.theme.bodyFont).css }}>{t('templates.sampleQuote')}</blockquote>
             </div>
-            <p className="muted">{preview.description}</p>
+            <p className="muted">{templateDesc(preview)}</p>
           </div>
         )}
       </Sheet>

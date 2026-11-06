@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSettings, useUi } from '../../app/AppContext';
+import { tr } from '../../i18n';
 import { CloudClient, friendlyError, localSessionStore, type CloudUser } from '../../services/cloud/client';
 import { cloudConfigured, SUPABASE_KEY, SUPABASE_URL } from '../../services/cloud/config';
 import { deviceIdentity, SyncEngine, type EngineSnapshot, type SyncReport, type SyncState } from '../../services/cloud/sync';
@@ -103,7 +104,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     window.dispatchEvent(new HashChangeEvent('hashchange'));
     svc.client.consumeAuthRedirect(hash).then((type) => {
       if (type === 'recovery') setRecovery(true);
-      else if (type) toast('Email tasdiqlandi. Hisobingizga kirdingiz.', 'success');
+      else if (type) toast(tr('auth.confirmed'), 'success');
     }).catch((e) => toast(friendlyError(e), 'error'));
   }, [svc, toast]);
 
@@ -141,7 +142,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     update({ cloudPromptedFor: user.id, cloudAutoSync: backupNow ? settingsRef.current.cloudAutoSync : false });
     if (backupNow) {
       const r = await sync('sync');
-      if (r) toast(`Cloud: ${r.uploaded} ta kitob yuklandi, ${r.downloaded} ta tiklandi`, 'success');
+      if (r) toast(tr('backup.synced', { up: r.uploaded, down: r.downloaded }), 'success');
     }
   }, [user, update, sync, toast]);
 

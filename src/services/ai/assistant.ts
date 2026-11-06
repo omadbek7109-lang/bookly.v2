@@ -13,6 +13,7 @@
  */
 import type { BookLanguage } from '../../models/book';
 import { DemoTextAIProvider } from './demoText';
+import { tr, type MessageKey } from '../../i18n';
 
 export type AssistTask = 'continue' | 'rewrite' | 'grammar' | 'shorten' | 'expand' | 'ideas' | 'dialog' | 'titles';
 
@@ -131,13 +132,13 @@ export async function remoteAssistantConfigured(url: string, key: string, fetchI
   } catch { return false; }
 }
 
-export const ASSIST_ERRORS: Record<string, string> = {
-  needs_login: 'AI yordamchidan foydalanish uchun hisobingizga kiring.',
-  session_expired: 'Sessiya tugadi. Qaytadan kiring.',
-  ai_limit: 'Bugungi AI so‘rovlar limiti tugadi. Ertaga yana urinib ko‘ring.',
-  ai_not_configured: 'AI yordamchi hozircha ulanmagan.',
-  network: 'Internet aloqasi yo‘q. Ulanishni tekshirib, qayta urinib ko‘ring.',
-  ai_error: 'AI javob bera olmadi. Qayta urinib ko‘ring.',
-  bad_request: 'So‘rov noto‘g‘ri. Matnni tekshirib, qayta urinib ko‘ring.',
+export const ASSIST_ERRORS: Record<string, MessageKey> = {
+  needs_login: 'assistErr.needs_login',
+  session_expired: 'err.session_expired',
+  ai_limit: 'assistErr.ai_limit',
+  ai_not_configured: 'assistErr.ai_not_configured',
+  network: 'err.network',
+  ai_error: 'assistErr.ai_error',
+  bad_request: 'assistErr.bad_request',
 };
-export const assistErrorText = (e: unknown) => (e instanceof AssistError ? ASSIST_ERRORS[e.code] ?? ASSIST_ERRORS.ai_error : ASSIST_ERRORS.ai_error);
+export const assistErrorText = (e: unknown) => tr(e instanceof AssistError ? ASSIST_ERRORS[e.code] ?? ASSIST_ERRORS.ai_error : ASSIST_ERRORS.ai_error);

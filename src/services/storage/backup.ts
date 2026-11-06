@@ -1,3 +1,4 @@
+import { tr } from '../../i18n';
 /** Local backup / restore (JSON with base64 assets). Also the hand-off format for the Phase 2 cloud migration. */
 import { migrateBook, type Book } from '../../models/book';
 import { assets, books, repoEvents } from './repository';
@@ -37,7 +38,7 @@ export async function createBackup(): Promise<Blob> {
 
 export async function restoreBackup(file: Blob): Promise<number> {
   const parsed = JSON.parse(await file.text()) as Partial<BackupFile>;
-  if (parsed.app !== 'bookly' || !Array.isArray(parsed.books)) throw new Error('Bu Bookly zaxira fayli emas');
+  if (parsed.app !== 'bookly' || !Array.isArray(parsed.books)) throw new Error(tr('backup.notBookly'));
   for (const a of parsed.assets ?? []) await assets.put(base64ToBlob(a.data, a.mime), a.name, a.id);
   let n = 0;
   for (const raw of parsed.books) { await books.save(migrateBook(raw), { touch: false }); n++; }

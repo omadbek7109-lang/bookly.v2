@@ -21,7 +21,7 @@ export function useBookActions() {
   }, [prompt, t, toast]);
 
   const duplicate = useCallback(async (b: Book) => {
-    const copy = await books.save(duplicateBook(b));
+    const copy = await books.save(duplicateBook(b, ` (${t('books.copySuffix')})`));
     toast(t('books.duplicated'), 'success', { label: t('common.open'), run: () => navigate(routes.editor(copy.id)) });
     return copy;
   }, [t, toast]);
