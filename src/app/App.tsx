@@ -1,11 +1,11 @@
-import { Component, lazy, Suspense, useState, type ReactNode } from 'react';
+import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { LibraryProvider, SettingsProvider, UiProvider, useLibrary, useSettings, useT } from './AppContext';
 import { navigate, routes, useRoute } from './router';
 import { Icon, type IconName } from '../components/Icon';
-import { Button, DialogHost, EmptyState, ListRow, Sheet, Spinner, ToastHost } from '../components/ui';
+import { Button, DialogHost, EmptyState, Field, ListRow, Sheet, Spinner, ToastHost } from '../components/ui';
 import { Splash } from '../features/home/Splash';
 import { HomePage } from '../features/home/HomePage';
-import { createBook } from '../models/book';
+import { createBook, type BookLayout } from '../models/book';
 import { books } from '../services/storage/repository';
 import type { MessageKey } from '../i18n';
 import { CloudProvider } from '../features/cloud/CloudContext';
@@ -64,17 +64,46 @@ const isImmersive = (p: string) => p.startsWith('/editor/') || p.startsWith('/re
 
 export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
+  const [step, setStep] = useState<'menu' | 'blank'>('menu');
+  const [title, setTitle] = useState('');
+  const [layout, setLayout] = useState<BookLayout>('chapters');
+  useEffect(() => { if (!open) { setStep('menu'); setTitle(''); setLayout('chapters'); } }, [open]);
   const newBlank = async () => {
     onClose();
-    const b = await books.save(createBook({ title: t('common.untitled') }));
+    const b = await books.save(createBook({ title: title.trim() || t('common.untitled'), layout }));
     navigate(routes.editor(b.id));
   };
   const go = (to: string) => () => { onClose(); navigate(to); };
+  if (step === 'blank') {
+    return (
+      <Sheet open={open} onClose={onClose} title={t('create.newBook')} size="sm"
+        footer={<><Button variant="ghost" onClick={() => setStep('menu')}>{t('common.back')}</Button><Button icon="check" onClick={() => void newBlank()} data-testid="new-create">{t('create.start')}</Button></>}>
+        <div className="form">
+          <Field label={t('creator.bookTitle')} htmlFor="nb-title" hint={t('common.optional')}>
+            <input id="nb-title" className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t('editor.bookTitlePh')}
+              onKeyDown={(e) => { if (e.key === 'Enter') void newBlank(); }} data-testid="new-title" />
+          </Field>
+          <p className="field-label">{t('create.layoutQ')}</p>
+          <div className="mode-cards" role="radiogroup" aria-label={t('create.layoutQ')}>
+            {([['chapters', 'list', 'create.layout.chapters', 'create.layout.chaptersDesc'], ['single', 'file', 'create.layout.single', 'create.layout.singleDesc']] as const).map(([v, icon, l, d]) => (
+              <button key={v} type="button" role="radio" aria-checked={layout === v} className={`mode-card ${layout === v ? 'is-active' : ''}`} onClick={() => setLayout(v)} data-testid={`mode-${v}`}>
+                <span className="quick-icon tone-violet"><Icon name={icon} size={22} /></span>
+                <strong>{t(l)}</strong>
+                <small>{t(d)}</small>
+                <span className="mode-check" aria-hidden="true"><Icon name="check" size={14} strokeWidth={3} /></span>
+              </button>
+            ))}
+          </div>
+          <p className="muted small">{t('create.layoutHint')}</p>
+        </div>
+      </Sheet>
+    );
+  }
   return (
     <Sheet open={open} onClose={onClose} title={t('create.title')} size="sm">
       <div className="list create-list">
+        <ListRow icon="filePlus" title={t('create.blank')} subtitle={t('create.blankDesc')} onClick={() => setStep('blank')} testId="create-blank" />
         <ListRow icon="sparkles" title={t('create.ai')} subtitle={t('create.aiDesc')} onClick={go(routes.create())} testId="create-ai" />
-        <ListRow icon="filePlus" title={t('create.blank')} subtitle={t('create.blankDesc')} onClick={() => void newBlank()} testId="create-blank" />
         <ListRow icon="layout" title={t('create.template')} subtitle={t('create.templateDesc')} onClick={go(routes.templates())} testId="create-template" />
         <ListRow icon="upload" title={t('create.import')} subtitle={t('create.importDesc')} onClick={go(routes.import())} testId="create-import" />
       </div>

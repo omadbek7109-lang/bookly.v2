@@ -7,13 +7,15 @@
 let seq = 0;
 const nextId = (p) => `${p}-${(++seq).toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`.slice(0, 36);
 
-export function createFakeSupabase({ requireConfirmation = false } = {}) {
+export function createFakeSupabase({ requireConfirmation = false, aiConfigured = false } = {}) {
+  const opts = { aiConfigured };
   const users = new Map(); // email -> {id,email,password,confirmed,meta}
   const tokens = new Map(); // access token -> userId
   const refreshTokens = new Map();
   const books = []; const chapters = []; const assets = []; const sync = []; const objects = new Map();
   const log = [];
   const sentFiles = [];
+  const aiCalls = [];
   let online = true;
 
   const json = (status, body) => ({ status, headers: { 'content-type': 'application/json' }, body: body === undefined ? '' : JSON.stringify(body) });
@@ -107,6 +109,15 @@ export function createFakeSupabase({ requireConfirmation = false } = {}) {
       let user = users.get(email);
       if (!user) { user = { id: nextId('u'), email, password: null, confirmed: true, meta: { display_name: [tg.first_name, tg.last_name].filter(Boolean).join(' '), telegram_id: tg.id } }; users.set(email, user); }
       return json(200, issue(user));
+    }
+    if (path === '/functions/v1/ai-assist') {
+      if (method === 'GET') return json(200, { configured: !!opts.aiConfigured });
+      if (!opts.aiConfigured) return json(503, { error: 'ai_not_configured' });
+      if (!userOf(headers)) return json(401, { error: 'needs_login' });
+      const d = data();
+      aiCalls.push(d.task);
+      if (d.task === 'titles') return json(200, { text: 'Birinchi nom\nIkkinchi nom', items: ['Birinchi nom', 'Ikkinchi nom'] });
+      return json(200, { text: `AI(${d.task}): ${d.text || d.note || ''}`.trim() });
     }
     if (path === '/functions/v1/telegram-bot' && q.get('action') === 'send') {
       // Real function verifies initData and calls Bot API sendDocument; the fake checks the multipart body.
@@ -216,7 +227,7 @@ export function createFakeSupabase({ requireConfirmation = false } = {}) {
   }
 
   return {
-    handle, fetch: fakeFetch, log, sentFiles,
+    handle, fetch: fakeFetch, log, sentFiles, aiCalls,
     setOnline(v) { online = v; },
     confirm(email) { const u = users.get(email); if (u) u.confirmed = true; },
     state: { users, books, chapters, assets, objects, sync },

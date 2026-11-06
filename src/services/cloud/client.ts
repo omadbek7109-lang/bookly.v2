@@ -184,6 +184,11 @@ export class CloudClient {
   }
 
   /** Exchanges Telegram Mini App initData for a Supabase session (Edge Function `telegram-auth`). */
+  /** A valid (refreshed if needed) access token for calling Edge Functions, or null when signed out. */
+  async accessToken(): Promise<string | null> {
+    try { return (await this.validSession())?.access_token ?? null; } catch { return null; }
+  }
+
   async signInWithTelegram(initData: string): Promise<Session> {
     const res = await this.raw('/functions/v1/telegram-auth', {
       method: 'POST', auth: false, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData }),

@@ -1,146 +1,162 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSettings } from '../../app/AppContext';
+import { useSettings, useUi } from '../../app/AppContext';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, DemoBadge, Sheet, Spinner } from '../../components/ui';
-import type { BookLanguage, WritingTone } from '../../models/book';
-import type { MessageKey } from '../../i18n';
-import { getTextAI } from '../../services/ai';
+import type { BookLanguage } from '../../models/book';
+import { assistErrorText, TASK_NEEDS_TEXT, type AssistTask, type WritingAssistant } from '../../services/ai/assistant';
+import { AuthSheet } from '../cloud/AuthSheet';
+import { useCloud } from '../cloud/CloudContext';
+import { friendlyError } from '../../services/cloud/client';
+import type { AssistantStatus } from './useAssistant';
 
-export type AssistantAction = 'continue' | 'rewrite' | 'expand' | 'summarize' | 'grammar' | 'spelling' | 'tone' | 'translate' | 'titles' | 'intro' | 'conclusion';
-export type ApplyMode = 'replace' | 'below' | 'title' | 'start' | 'end';
+/** insert = add below the current paragraph (or at the end); replace = swap the selected text / paragraph. */
+export type ApplyMode = 'insert' | 'replace' | 'title';
 
 export interface AssistantTarget {
-  /** Selected text inside a block (null when acting on the whole block). */
+  /** Selected text inside a block (null when acting on the whole paragraph). */
   selection: string | null;
   blockText: string;
   hasBlock: boolean;
   chapterTitle: string;
   bookTitle: string;
   language: BookLanguage;
+  /** One continuous text (no chapters): title suggestions become headings. */
+  single: boolean;
 }
 
-const ACTIONS: { id: AssistantAction; icon: IconName; label: MessageKey; needsText: boolean }[] = [
-  { id: 'continue', icon: 'feather', label: 'assistant.continue', needsText: true },
-  { id: 'rewrite', icon: 'refresh', label: 'assistant.rewrite', needsText: true },
-  { id: 'expand', icon: 'maximize', label: 'assistant.expand', needsText: true },
-  { id: 'summarize', icon: 'minimize', label: 'assistant.summarize', needsText: true },
-  { id: 'grammar', icon: 'check', label: 'assistant.grammar', needsText: true },
-  { id: 'spelling', icon: 'type', label: 'assistant.spelling', needsText: true },
-  { id: 'tone', icon: 'palette', label: 'assistant.tone', needsText: true },
-  { id: 'translate', icon: 'languages', label: 'assistant.translate', needsText: true },
-  { id: 'titles', icon: 'heading', label: 'assistant.titles', needsText: false },
-  { id: 'intro', icon: 'arrowUp', label: 'assistant.intro', needsText: false },
-  { id: 'conclusion', icon: 'arrowDown', label: 'assistant.conclusion', needsText: false },
+const TASKS: { id: AssistTask; icon: IconName; label: string; hint: string }[] = [
+  { id: 'continue', icon: 'feather', label: 'Matnni davom ettirish', hint: 'Keyingi gaplarni taklif qiladi' },
+  { id: 'rewrite', icon: 'refresh', label: 'Qayta yozish', hint: 'Shu fikrni boshqacha ifodalaydi' },
+  { id: 'grammar', icon: 'check', label: 'Imlo va grammatika', hint: 'Xatolarni tuzatadi' },
+  { id: 'shorten', icon: 'minimize', label: 'Qisqartirish', hint: 'Asosiy fikrni qoldiradi' },
+  { id: 'expand', icon: 'maximize', label: 'Kengaytirish', hint: 'Tafsilot va misollar qo‘shadi' },
+  { id: 'ideas', icon: 'zap', label: 'G‘oyalar berish', hint: 'Nima haqida yozish mumkin' },
+  { id: 'dialog', icon: 'quote', label: 'Dialog yaratish', hint: 'Qahramonlar suhbati' },
+  { id: 'titles', icon: 'heading', label: 'Sarlavha taklif qilish', hint: 'Bob yoki matn uchun nomlar' },
 ];
-const TONES: WritingTone[] = ['educational', 'professional', 'academic', 'creative', 'informal', 'storytelling'];
 
-export function AssistantSheet({ open, onClose, target, onApply }: {
+export function AssistantSheet({ open, onClose, target, onApply, assistant, status }: {
   open: boolean; onClose: () => void; target: AssistantTarget; onApply: (mode: ApplyMode, text: string) => void;
+  assistant: WritingAssistant | null; status: AssistantStatus;
 }) {
   const { t } = useSettings();
-  const ai = getTextAI();
-  const [action, setAction] = useState<AssistantAction | null>(null);
+  const { toast } = useUi();
+  const cloud = useCloud();
+  const [task, setTask] = useState<AssistTask | null>(null);
+  const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
-  const [titles, setTitles] = useState<string[] | null>(null);
-  const [tone, setTone] = useState<WritingTone>('professional');
-  const [lang, setLang] = useState<BookLanguage>(target.language === 'uz' ? 'en' : 'uz');
+  const [result, setResult] = useState<{ text: string; items?: string[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [login, setLogin] = useState(false);
   const abort = useRef<AbortController | null>(null);
-  const source = target.selection ?? target.blockText;
+  const source = (target.selection ?? target.blockText).trim();
 
-  useEffect(() => { if (!open) { abort.current?.abort(); setAction(null); setResult(null); setTitles(null); setBusy(false); } }, [open]);
+  useEffect(() => {
+    if (!open) { abort.current?.abort(); setTask(null); setResult(null); setError(null); setBusy(false); setNote(''); }
+  }, [open]);
 
-  const run = async (a: AssistantAction, opts: { tone?: WritingTone; lang?: BookLanguage } = {}) => {
-    setAction(a); setResult(null); setTitles(null);
-    if ((a === 'tone' && !opts.tone) || (a === 'translate' && !opts.lang)) return; // wait for option choice
+  const run = async (id: AssistTask) => {
+    if (!assistant) return;
+    setTask(id); setResult(null); setError(null);
     abort.current?.abort();
     abort.current = new AbortController();
-    const o = { signal: abort.current.signal, language: target.language, context: target.chapterTitle };
     setBusy(true);
     try {
-      let r: string | string[];
-      switch (a) {
-        case 'continue': r = await ai.continueText(source, o); break;
-        case 'rewrite': r = await ai.rewriteText(source, o); break;
-        case 'expand': r = await ai.expandText(source, o); break;
-        case 'summarize': r = await ai.summarizeText(source, o); break;
-        case 'grammar': r = await ai.improveGrammar(source, o); break;
-        case 'spelling': r = await ai.fixSpelling(source, o); break;
-        case 'tone': r = await ai.changeTone(source, opts.tone!, o); break;
-        case 'translate': r = await ai.translateText(source, opts.lang!, { ...o, language: undefined }); break;
-        case 'titles': r = await ai.generateChapterTitles(target.bookTitle || target.chapterTitle, 5, o); break;
-        case 'intro': r = await ai.generateIntroduction(target.chapterTitle || target.bookTitle, o); break;
-        case 'conclusion': r = await ai.generateConclusion(target.chapterTitle || target.bookTitle, o); break;
-      }
-      if (Array.isArray(r)) setTitles(r); else setResult(r);
+      const r = await assistant.run({
+        task: id, text: source, note, language: target.language, bookTitle: target.bookTitle, chapterTitle: target.chapterTitle, signal: abort.current.signal,
+      });
+      setResult(r);
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') setResult(null);
+      if ((e as Error).name !== 'AbortError') setError(assistErrorText(e));
     } finally { setBusy(false); }
   };
 
-  const current = ACTIONS.find((x) => x.id === action);
-  const accept = (mode: ApplyMode) => { if (result) { onApply(mode, result); onClose(); } };
+  const copy = async () => {
+    if (!result) return;
+    try { await navigator.clipboard.writeText(result.text); toast('Nusxalandi', 'success'); }
+    catch { toast('Nusxalab bo‘lmadi — matnni belgilab nusxalang', 'error'); }
+  };
+  const apply = (mode: ApplyMode, text = result?.text ?? '') => { if (text) { onApply(mode, text); onClose(); } };
+  const current = TASKS.find((x) => x.id === task);
+  const replaceable = !!source && target.hasBlock && !!task && TASK_NEEDS_TEXT[task] && task !== 'continue';
+
+  const title = <><Icon name="sparkles" size={20} /> {t('assistant.title')} {status === 'demo' && <DemoBadge />}</>;
+
+  if (status === 'needs-login') {
+    return (
+      <Sheet open={open} onClose={onClose} size="sm" title={title}>
+        <div className="assistant">
+          <p>AI yordamchi hisobingiz orqali ishlaydi — shunda so‘rovlaringiz xavfsiz va faqat sizga tegishli bo‘ladi.</p>
+          {cloud.inTelegram ? (
+            <Button icon="user" block loading={cloud.telegramBusy} onClick={() => void cloud.signInWithTelegram().catch((e) => toast(friendlyError(e), 'error'))} data-testid="ai-login">Telegram orqali kirish</Button>
+          ) : (
+            <Button icon="user" block onClick={() => setLogin(true)} data-testid="ai-login">Hisobga kirish</Button>
+          )}
+          <AuthSheet open={login} initial="login" onClose={() => setLogin(false)} />
+        </div>
+      </Sheet>
+    );
+  }
 
   return (
-    <Sheet open={open} onClose={onClose} size="md" title={<><Icon name="sparkles" size={20} /> {t('assistant.title')} <DemoBadge /></>}>
-      <div className="assistant">
+    <Sheet open={open} onClose={onClose} size="md" title={title}>
+      <div className="assistant" data-testid="assistant">
         <div className="assistant-target">
-          <small>{target.selection ? t('assistant.selection') : t('assistant.wholeBlock')}</small>
-          <p>{source ? (source.length > 220 ? `${source.slice(0, 220)}…` : source) : <em className="muted">{t('assistant.noTarget')}</em>}</p>
+          <small>{target.selection ? t('assistant.selection') : 'Joriy paragraf'}</small>
+          <p>{source ? (source.length > 200 ? `${source.slice(0, 200)}…` : source) : <em className="muted">Matn tanlanmagan — «G‘oyalar», «Dialog» va «Sarlavha» baribir ishlaydi. Boshqalari uchun paragrafga bosing yoki matnni belgilang.</em>}</p>
         </div>
 
-        {!action || (!busy && !result && !titles && action !== 'tone' && action !== 'translate') ? (
-          <div className="assistant-actions" role="list">
-            {ACTIONS.map((a) => (
-              <button key={a.id} type="button" role="listitem" className="assistant-action" disabled={a.needsText && !source.trim()} onClick={() => void run(a.id)} data-testid={`ai-${a.id}`}>
-                <Icon name={a.icon} size={18} /><span>{t(a.label)}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {action === 'tone' && !busy && !result && (
-          <div>
-            <p className="muted small">{t('assistant.targetTone')}</p>
-            <div className="chips">{TONES.map((x) => <button key={x} type="button" className={`chip-btn ${tone === x ? 'is-active' : ''}`} onClick={() => { setTone(x); void run('tone', { tone: x }); }}>{t(`tone.${x}` as MessageKey)}</button>)}</div>
-          </div>
-        )}
-        {action === 'translate' && !busy && !result && (
-          <div>
-            <p className="muted small">{t('assistant.targetLang')}</p>
-            <div className="chips">{(['uz', 'en', 'ru'] as BookLanguage[]).map((x) => <button key={x} type="button" className={`chip-btn ${lang === x ? 'is-active' : ''}`} onClick={() => { setLang(x); void run('translate', { lang: x }); }}>{t(`lang.${x}` as MessageKey)}</button>)}</div>
-          </div>
+        {!task && (
+          <>
+            <div className="assistant-actions" role="list">
+              {TASKS.map((a) => (
+                <button key={a.id} type="button" role="listitem" className="assistant-action" disabled={!assistant || (TASK_NEEDS_TEXT[a.id] && !source)} onClick={() => void run(a.id)} data-testid={`ai-${a.id}`}>
+                  <Icon name={a.icon} size={18} />
+                  <span><strong>{a.label}</strong><small>{a.hint}</small></span>
+                </button>
+              ))}
+            </div>
+            <label className="assistant-note">
+              <span className="muted small">Qo‘shimcha ko‘rsatma (ixtiyoriy)</span>
+              <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Masalan: bolalar uchun sodda tilda; Ali va Vali suhbati" data-testid="ai-note" />
+            </label>
+            <p className="muted small">AI faqat siz tanlagan vazifani bajaradi. Javob matnga o‘zi qo‘shilmaydi — nima qilishni o‘zingiz tanlaysiz.</p>
+          </>
         )}
 
-        {busy && <div className="assistant-busy"><Spinner label={t('assistant.working')} /></div>}
+        {busy && <div className="assistant-busy"><Spinner label={`${current?.label ?? ''}: ${t('assistant.working')}`} /></div>}
 
-        {result && current && (
-          <div className="assistant-result" data-testid="ai-result">
-            {current.needsText && (
-              <div className="diff-old"><small>{t('assistant.original')}</small><p>{source}</p></div>
-            )}
-            <div className="diff-new"><small>{t('assistant.suggestion')}</small><p>{result}</p></div>
+        {error && !busy && (
+          <div className="assistant-error" role="alert">
+            <Icon name="alert" size={18} /> <span>{error}</span>
             <div className="row-actions">
-              <Button variant="ghost" icon="x" onClick={() => { setResult(null); setAction(null); }} data-testid="ai-reject">{t('common.reject')}</Button>
-              {action === 'intro' ? <Button icon="check" onClick={() => accept('start')} data-testid="ai-accept">{t('common.accept')}</Button>
-                : action === 'conclusion' ? <Button icon="check" onClick={() => accept('end')} data-testid="ai-accept">{t('common.accept')}</Button>
-                : (
-                  <>
-                    <Button variant="secondary" icon="plus" onClick={() => accept('below')} disabled={!target.hasBlock} data-testid="ai-insert">{t('assistant.insertBelow')}</Button>
-                    {action !== 'continue' && <Button icon="check" onClick={() => accept('replace')} disabled={!target.hasBlock} data-testid="ai-accept">{t('assistant.replace')}</Button>}
-                  </>
-                )}
+              <Button variant="ghost" onClick={() => { setTask(null); setError(null); }}>{t('common.back')}</Button>
+              {task && <Button icon="refresh" onClick={() => void run(task)}>Qayta urinish</Button>}
             </div>
           </div>
         )}
 
-        {titles && (
-          <div className="assistant-titles">
-            <p className="muted small">{t('assistant.pickTitle')}</p>
-            <div className="list">
-              {titles.map((x) => <button key={x} type="button" className="list-row" onClick={() => { onApply('title', x); onClose(); }}><Icon name="heading" size={18} /><span className="list-row-text"><span>{x}</span></span></button>)}
+        {result && current && !busy && (
+          <div className="assistant-result" data-testid="ai-result">
+            <small className="muted">{current.label}</small>
+            {result.items?.length ? (
+              <div className="list">
+                {result.items.map((x) => (
+                  <button key={x} type="button" className="list-row" onClick={() => apply('title', x)} data-testid="ai-title-item">
+                    <Icon name="heading" size={18} /><span className="list-row-text"><span>{x}</span><small>{target.single ? 'Sarlavha sifatida qo‘shish' : 'Bob nomi qilish'}</small></span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="diff-new"><p className="selectable">{result.text}</p></div>
+            )}
+            <div className="assistant-choices">
+              {!result.items?.length && <Button icon="plus" onClick={() => apply('insert')} data-testid="ai-insert">Matnga qo‘shish</Button>}
+              {!result.items?.length && replaceable && <Button variant="secondary" icon="check" onClick={() => apply('replace')} data-testid="ai-accept">Eski matnni almashtirish</Button>}
+              <Button variant="secondary" icon="refresh" onClick={() => void run(current.id)} data-testid="ai-retry">Qayta urinish</Button>
+              <Button variant="ghost" icon="copy" onClick={() => void copy()} data-testid="ai-copy">Nusxalash</Button>
+              <Button variant="ghost" icon="chevronLeft" onClick={() => { setTask(null); setResult(null); }} data-testid="ai-reject">Boshqa vazifa</Button>
             </div>
-            <Button variant="ghost" icon="x" onClick={() => { setTitles(null); setAction(null); }}>{t('common.reject')}</Button>
           </div>
         )}
       </div>

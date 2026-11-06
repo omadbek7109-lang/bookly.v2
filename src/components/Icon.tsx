@@ -68,6 +68,8 @@ const P: Record<string, string> = {
   layout: 'M3 3h18v18H3zM3 9h18M9 21V9',
   restore: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',
   zap: 'M13 2 3 14h9l-1 8 10-12h-9z',
+  help: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01',
+  code: 'm16 18 6-6-6-6M8 6l-6 6 6 6',
   send: 'M22 2 11 13M22 2l-7 20-4-9-9-4z',
   share: 'M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13',
   save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8',

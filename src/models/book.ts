@@ -88,7 +88,17 @@ export interface BookMetadata {
   rights: string;
   source: 'manual' | 'demo-ai' | 'ai' | 'import' | 'template' | 'migration';
   targetChapters: number;
+  /**
+   * 'chapters' (default, also for every book created before this field existed) or 'single':
+   * one continuous text without chapter headings. Stored in metadata so it syncs to the cloud as-is.
+   */
+  layout?: BookLayout;
 }
+
+export type BookLayout = 'chapters' | 'single';
+
+/** True for "one continuous text" books: no chapter titles in the editor, reader or exports. */
+export const isSingleText = (b: Pick<Book, 'metadata'>) => b.metadata?.layout === 'single';
 
 export interface Book {
   schemaVersion: number;
@@ -165,6 +175,7 @@ export interface NewBookInput {
   title?: string; subtitle?: string; author?: string; description?: string; language?: BookLanguage;
   category?: BookCategory; chapters?: Chapter[]; source?: BookMetadata['source']; tone?: WritingTone; audience?: string;
   targetChapters?: number;
+  layout?: BookLayout;
 }
 
 export function createBook(input: NewBookInput = {}): Book {
@@ -184,10 +195,11 @@ export function createBook(input: NewBookInput = {}): Book {
     category: input.category ?? 'other',
     cover,
     theme: { ...DEFAULT_THEME },
-    chapters: input.chapters && input.chapters.length ? input.chapters : [createChapter('1-bob')],
+    chapters: input.chapters && input.chapters.length ? input.chapters : [createChapter(input.layout === 'single' ? '' : '1-bob')],
     metadata: {
       keywords: [], audience: input.audience ?? '', tone: input.tone ?? 'educational', publisher: '', isbn: '', rights: '',
       source: input.source ?? 'manual', targetChapters: input.targetChapters ?? (input.chapters?.length || 1),
+      ...(input.layout ? { layout: input.layout } : {}),
     },
     createdAt: now,
     updatedAt: now,

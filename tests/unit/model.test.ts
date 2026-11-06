@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bookProgress, bookWordCount, createBlock, createBook, createChapter, duplicateBook, migrateBook, SCHEMA_VERSION } from '../../src/models/book';
+import { bookProgress, bookWordCount, createBlock, createBook, createChapter, duplicateBook, migrateBook, SCHEMA_VERSION, isSingleText } from '../../src/models/book';
 import { parseInline, plainText, sanitizeInline } from '../../src/utils/inline';
 import { slugify } from '../../src/utils/id';
 
@@ -68,4 +68,18 @@ test('slugify handles Uzbek and Cyrillic', () => {
   assert.equal(slugify('Moliyaviy savodxonlik: o‘zbek tilida!'), 'moliyaviy-savodxonlik-ozbek-tilida');
   assert.equal(slugify('Книга'), 'kniga');
   assert.equal(slugify('***'), 'bookly');
+});
+
+test('book layout: old books stay "chapters", single-text books keep one untitled section', () => {
+  const legacy = migrateBook({ id: 'old', title: 'Eski', chapters: [{ id: 'c1', title: 'Bob', blocks: [] }], metadata: { tone: 'educational' } });
+  assert.equal(isSingleText(legacy), false);
+  assert.equal(legacy.metadata.layout, undefined, 'old books are not rewritten to a new format');
+  const single = createBook({ title: 'Yaxlit', layout: 'single' });
+  assert.equal(isSingleText(single), true);
+  assert.equal(single.chapters.length, 1);
+  assert.equal(single.chapters[0].title, '');
+  assert.equal(isSingleText(migrateBook(JSON.parse(JSON.stringify(single)))), true, 'layout survives storage round-trip');
+  const withCh = createBook({ title: 'Bobli', layout: 'chapters' });
+  assert.equal(isSingleText(withCh), false);
+  assert.equal(withCh.chapters[0].title, '1-bob');
 });

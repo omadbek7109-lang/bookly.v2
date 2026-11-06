@@ -4,7 +4,7 @@ import { back, navigate, routes, useRoute } from '../../app/router';
 import { Icon, type IconName } from '../../components/Icon';
 import { Button, EmptyState, Field, IconButton, ListRow, Segmented, Sheet, Spinner } from '../../components/ui';
 import {
-  chapterWordCount, createBlock, createChapter, bookWordCount, blockText,
+  chapterWordCount, createBlock, createChapter, bookWordCount, blockText, isSingleText,
   type Align, type Block, type Book, type BookCategory, type BookLanguage, type BlockType, type Chapter,
 } from '../../models/book';
 import type { MessageKey } from '../../i18n';
@@ -13,6 +13,7 @@ import { syncCoverText } from '../../services/cover/renderCover';
 import { useKeyboardInset } from '../../hooks/useAssetUrl';
 import { plainText, sanitizeInline, textToInline } from '../../utils/inline';
 import { AssistantSheet, type ApplyMode, type AssistantTarget } from '../ai-assistant/AssistantSheet';
+import { useWritingAssistant } from '../ai-assistant/useAssistant';
 import { ChapterContent } from '../reader/BookContent';
 import { BlockView, placeCaret, type BlockHandlers } from './blocks';
 import { useEditorState, type SaveStatus } from './useEditorState';
@@ -43,10 +44,16 @@ export default function EditorPage({ bookId }: { bookId: string }) {
 
 type SheetName = null | 'chapters' | 'format' | 'insert' | 'assistant' | 'block' | 'details' | 'preview';
 
+interface InsertItem { id: string; type: BlockType; icon: IconName; label: string; hint?: string; init?: Partial<Block> }
+/** The "+" menu: the five everyday blocks first, the rest behind "Boshqa bloklar". */
+const MAIN_INSERTS: InsertItem[] = [
+  { id: 'heading', type: 'heading', icon: 'heading', label: 'Sarlavha', hint: 'Katta bo‘lim nomi', init: { level: 1 } as Partial<Block> },
+  { id: 'subheading', type: 'heading', icon: 'type', label: 'Kichik sarlavha', hint: 'Bo‘lim ichidagi nom', init: { level: 2 } as Partial<Block> },
+  { id: 'paragraph', type: 'paragraph', icon: 'alignLeft', label: 'Oddiy matn', hint: 'Yangi paragraf' },
+  { id: 'quote', type: 'quote', icon: 'quote', label: 'Iqtibos', hint: 'Kimningdir so‘zlari' },
+  { id: 'image', type: 'image', icon: 'image', label: 'Rasm', hint: 'Galereyadan yuklash' },
+];
 const INSERTS: { type: BlockType; icon: IconName; label: MessageKey; init?: Partial<Block> }[] = [
-  { type: 'paragraph', icon: 'alignLeft', label: 'editor.block.paragraph' },
-  { type: 'heading', icon: 'heading', label: 'editor.block.heading' },
-  { type: 'quote', icon: 'quote', label: 'editor.block.quote' },
   { type: 'list', icon: 'list', label: 'editor.block.list' },
   { type: 'list', icon: 'listOrdered', label: 'editor.block.olist', init: { ordered: true } as Partial<Block> },
   { type: 'image', icon: 'image', label: 'editor.block.image' },
@@ -56,6 +63,7 @@ const INSERTS: { type: BlockType; icon: IconName; label: MessageKey; init?: Part
   { type: 'pagebreak', icon: 'pageBreak', label: 'editor.block.pagebreak' },
 ];
 
+const isEmptyText = (b: Block | undefined) => !!b && b.type === 'paragraph' && !plainText(b.html).trim();
 const isText = (b: Block | undefined): b is Extract<Block, { type: 'paragraph' | 'heading' | 'quote' }> => !!b && (b.type === 'paragraph' || b.type === 'heading' || b.type === 'quote');
 
 function Editor({ initial }: { initial: Book }) {
@@ -78,6 +86,9 @@ function Editor({ initial }: { initial: Book }) {
   const focusReq = useRef<{ id: string; where: 'start' | 'end' } | null>(null);
   const savedRange = useRef<{ range: Range; blockId: string; text: string } | null>(null);
   const [assistTarget, setAssistTarget] = useState<AssistantTarget | null>(null);
+  const [moreInserts, setMoreInserts] = useState(false);
+  const ai = useWritingAssistant();
+  const single = isSingleText(book);
 
   useEffect(() => { if (chapter.id !== chapterId) setChapterId(chapter.id); }, [chapter.id, chapterId]);
 
@@ -86,7 +97,7 @@ function Editor({ initial }: { initial: Book }) {
     const req = focusReq.current;
     if (!req) return;
     const el = els.current.get(req.id);
-    if (el) {
+    if (el && el.isConnected) {
       focusReq.current = null;
       if (el.isContentEditable) placeCaret(el, req.where);
       else { el.querySelector<HTMLElement>('input,textarea,button')?.focus() ?? el.focus(); }
@@ -115,6 +126,19 @@ function Editor({ initial }: { initial: Book }) {
       return c;
     });
     if (focus) { focusBlock(blk.id, 'start'); setActive(blk.id); }
+  };
+
+  /** "+" menu: an empty paragraph under the cursor turns into the chosen block; otherwise a new block is added below. */
+  const insertFromMenu = (type: BlockType, init: Partial<Block> = {}) => {
+    setSheet(null); setMoreInserts(false);
+    const cur = chapter.blocks.find((x) => x.id === active) ?? null;
+    if (cur && isEmptyText(cur) && type !== 'paragraph') {
+      const nb = { ...createBlock(type, init as never), id: cur.id } as Block;
+      setBlocks((bs) => bs.map((x) => (x.id === cur.id ? nb : x)));
+      focusBlock(cur.id, 'start');
+      return;
+    }
+    insertAfter(cur?.id ?? chapter.blocks[chapter.blocks.length - 1]?.id ?? null, createBlock(type, init as never));
   };
 
   const removeBlock = (id: string) => {
@@ -166,7 +190,17 @@ function Editor({ initial }: { initial: Book }) {
     onExitList: () => insertAfter(b.id, createBlock('paragraph')),
     onFocus: () => setActive(b.id),
     onMenu: () => { setActive(b.id); setMenuBlock(b.id); setSheet('block'); },
-    register: (el) => { if (el) els.current.set(b.id, el); else els.current.delete(b.id); },
+    register: (el) => {
+      if (!el) { els.current.delete(b.id); return; }
+      els.current.set(b.id, el);
+      // A block that was just created or converted mounts after the focus effect ran: focus it now.
+      const req = focusReq.current;
+      if (req && req.id === b.id) {
+        focusReq.current = null;
+        if (el.isContentEditable) placeCaret(el, req.where); else el.focus();
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    },
   });
 
   // ---------------------------------------------------------------- chapters
@@ -177,6 +211,7 @@ function Editor({ initial }: { initial: Book }) {
     window.scrollTo({ top: 0 });
   };
   const addChapter = () => {
+    // "N-bob" is only a starting suggestion: the title field opens selected so the writer can type their own.
     const c = createChapter(`${book.chapters.length + 1}-bob`);
     update((b) => {
       const idx = b.chapters.findIndex((x) => x.id === chapterId);
@@ -223,22 +258,36 @@ function Editor({ initial }: { initial: Book }) {
     }
     const blk = chapter.blocks.find((x) => x.id === active);
     setAssistTarget({
-      selection, blockText: blk ? blockText(blk) : '', hasBlock: !!blk, chapterTitle: chapter.title, bookTitle: book.title, language: book.language,
+      selection, blockText: blk ? blockText(blk) : '', hasBlock: !!blk, chapterTitle: single ? '' : chapter.title, bookTitle: book.title, language: book.language, single,
     });
     setSheet('assistant');
   };
 
   const applyAssistant = (mode: ApplyMode, text: string) => {
     const blk = chapter.blocks.find((x) => x.id === active);
-    if (mode === 'title') { update((b) => ({ ...b, chapters: b.chapters.map((c) => (c.id === chapterId ? { ...c, title: text } : c)) })); toast(t('assistant.applied'), 'success'); return; }
-    if (mode === 'start' || mode === 'end') {
-      const nb = createBlock('paragraph', { html: textToInline(text) });
-      setBlocks((bs) => (mode === 'start' ? [nb, ...bs] : [...bs.filter((x) => !(isText(x) && !plainText(x.html).trim() && bs.length === 1)), nb]));
+    if (mode === 'title') {
+      if (single) {
+        const hb = createBlock('heading', { level: 1, html: textToInline(text) });
+        setBlocks((bs) => { const c = [...bs]; c.splice(blk ? Math.max(0, bs.findIndex((x) => x.id === blk.id)) : 0, 0, hb); return c; });
+      }
+      else update((b) => ({ ...b, chapters: b.chapters.map((c) => (c.id === chapterId ? { ...c, title: text } : c)) }));
       toast(t('assistant.applied'), 'success');
       return;
     }
-    if (!blk) return;
-    if (mode === 'below') { insertAfter(blk.id, createBlock('paragraph', { html: textToInline(text) })); toast(t('assistant.applied'), 'success'); return; }
+    const paragraphs = () => text.split(/\n{2,}|\n(?=—)/).map((x) => x.trim()).filter(Boolean).map((x) => createBlock('paragraph', { html: textToInline(x) }));
+    if (mode === 'insert' || !blk) {
+      const nbs = paragraphs();
+      if (!nbs.length) return;
+      setBlocks((bs) => {
+        const i = blk ? bs.findIndex((x) => x.id === blk.id) : bs.length - 1;
+        const c = [...bs];
+        // an empty paragraph under the cursor is filled instead of leaving a blank line
+        if (blk && isEmptyText(blk)) c.splice(i, 1, ...nbs); else c.splice(i + 1, 0, ...nbs);
+        return c;
+      });
+      toast('Matnga qo‘shildi', 'success');
+      return;
+    }
     // replace — selection-level when possible, otherwise the whole block
     const sr = savedRange.current;
     const el = els.current.get(blk.id);
@@ -252,7 +301,34 @@ function Editor({ initial }: { initial: Book }) {
       }, 60);
     } else if (isText(blk)) replaceBlock({ ...blk, html: textToInline(text) });
     else if (blk.type === 'list') replaceBlock({ ...blk, items: text.split('\n').filter(Boolean).map(textToInline) });
-    toast(t('assistant.applied'), 'success');
+    toast('Matn almashtirildi', 'success');
+  };
+
+  // ---------------------------------------------------------------- book structure (chapters ⇄ one continuous text)
+  const setLayout = async (to: 'chapters' | 'single') => {
+    if (to === (single ? 'single' : 'chapters')) return;
+    if (to === 'chapters') {
+      update((b) => ({ ...b, metadata: { ...b.metadata, layout: 'chapters' }, chapters: b.chapters.map((c, i) => (c.title.trim() ? c : { ...c, title: `${i + 1}-bob` })) }));
+      toast('Endi kitob boblardan iborat', 'success');
+      return;
+    }
+    if (book.chapters.length > 1) {
+      const ok = await confirm({
+        title: 'Bitta yaxlit matnga o‘tkazish',
+        message: `${book.chapters.length} ta bob bitta uzluksiz matnga birlashtiriladi. Bob nomlari matn ichida sarlavha bo‘lib qoladi — hech qaysi matn o‘chmaydi. Davom etamizmi?`,
+        confirmLabel: 'Birlashtirish',
+      });
+      if (!ok) return;
+    }
+    update((b) => {
+      const blocks: Block[] = b.chapters.length > 1
+        ? b.chapters.flatMap((c, i) => [createBlock('heading', { level: 1, html: textToInline(c.title.trim() || `${i + 1}-bob`) }), ...c.blocks])
+        : b.chapters[0].blocks;
+      const merged = { ...b.chapters[0], blocks, updatedAt: Date.now() };
+      return { ...b, metadata: { ...b.metadata, layout: 'single' }, chapters: [merged] };
+    });
+    setChapterId(book.chapters[0].id);
+    toast('Endi kitob bitta yaxlit matn', 'success');
   };
 
   // ---------------------------------------------------------------- keyboard shortcuts
@@ -272,12 +348,12 @@ function Editor({ initial }: { initial: Book }) {
   const wc = useMemo(() => chapterWordCount(chapter), [chapter]);
 
   return (
-    <div className="editor" data-testid="editor">
+    <div className={`editor ${single ? 'is-single' : ''}`} data-testid="editor" data-layout={single ? 'single' : 'chapters'}>
       <header className="editor-bar">
         <IconButton icon="chevronLeft" label={t('common.back')} onClick={() => { void ed.saveNow(); back(routes.books()); }} />
-        <button type="button" className="editor-booktitle" onClick={() => setSheet('details')} data-testid="editor-details">
+        <button type="button" className="editor-booktitle" onClick={() => setSheet('details')} data-testid="editor-details" aria-label="Kitob tafsilotlari">
           <strong>{book.title}</strong>
-          <SaveChip status={ed.status} />
+          <SaveChip status={ed.status} onRetry={() => void ed.saveNow()} />
         </button>
         <IconButton icon="undo" label={t('editor.undo')} onClick={ed.undo} disabled={!ed.canUndo} data-testid="undo" />
         <IconButton icon="redo" label={t('editor.redo')} onClick={ed.redo} disabled={!ed.canRedo} data-testid="redo" />
@@ -286,41 +362,46 @@ function Editor({ initial }: { initial: Book }) {
       </header>
 
       <div className="editor-layout">
-        <aside className="editor-chapters" aria-label={t('editor.chapters')}>
-          <ChapterList book={book} current={chapter.id} onSelect={selectChapter} onAdd={addChapter} onRename={renameChapter} onDelete={deleteChapter} onMove={moveChapter} />
-        </aside>
+        {!single && (
+          <aside className="editor-chapters" aria-label={t('editor.chapters')}>
+            <ChapterList book={book} current={chapter.id} onSelect={selectChapter} onAdd={addChapter} onRename={renameChapter} onDelete={deleteChapter} onMove={moveChapter} />
+          </aside>
+        )}
 
         <div className="editor-main">
-          <button type="button" className="chapter-picker glass" onClick={() => setSheet('chapters')} data-testid="chapter-picker">
-            <Icon name="menu" size={18} />
-            <span>{t('editor.chapters')} · {chIndex + 1}/{book.chapters.length}</span>
-            <small>{t('editor.words', { n: wc })}</small>
-            <Icon name="chevronDown" size={18} />
-          </button>
+          {!single && (
+            <button type="button" className="chapter-picker glass" onClick={() => setSheet('chapters')} data-testid="chapter-picker" aria-label="Boblar ro‘yxati">
+              <Icon name="list" size={18} />
+              <span><b>{chIndex + 1}/{book.chapters.length}</b> {chapter.title || `${chIndex + 1}-bob`}</span>
+              <small>Boblar</small>
+              <Icon name="chevronDown" size={18} />
+            </button>
+          )}
 
-          <div className="page-paper" style={{ background: undefined }}>
-            <textarea key={chapter.id} className="chapter-title-input" rows={1} value={chapter.title} placeholder={t('editor.chapterTitlePh')} aria-label={t('editor.chapterTitlePh')}
-              ref={fitTitle}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-              onChange={(e) => { fitTitle(e.target); mutateChapter((c) => ({ ...c, title: e.target.value.replace(/\n/g, ' ') }), `title:${chapter.id}`); }} data-testid="chapter-title" />
+          <div className="page-paper">
+            {!single && (
+              <textarea key={chapter.id} className="chapter-title-input" rows={1} value={chapter.title} placeholder="Bob nomini yozing" aria-label={t('editor.chapterTitlePh')}
+                ref={fitTitle}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); const first = chapter.blocks[0]; if (first) { focusBlock(first.id, 'start'); setActive(first.id); } } }}
+                onChange={(e) => { fitTitle(e.target); mutateChapter((c) => ({ ...c, title: e.target.value.replace(/\n/g, ' ') }), `title:${chapter.id}`); }} data-testid="chapter-title" />
+            )}
             <div className="blocks" data-testid="blocks">
               {chapter.blocks.map((b, i) => <BlockView key={b.id} block={b} h={handlers(b, i)} active={active === b.id} />)}
             </div>
-            <button type="button" className="add-block" onClick={() => setSheet('insert')} data-testid="add-block-end">
-              <Icon name="plus" size={18} /> {t('editor.addBlockBelow')}
-            </button>
+            <p className="word-count muted small" aria-live="off">{t('editor.words', { n: wc })}</p>
           </div>
         </div>
       </div>
 
-      <nav className="editor-toolbar" aria-label={t('editor.format')} onMouseDown={(e) => { if ((e.target as HTMLElement).closest('.keep-focus')) e.preventDefault(); }}>
-        <button type="button" className="tb-btn keep-focus" onClick={() => exec('bold')} aria-label={t('editor.bold')} data-testid="fmt-bold"><Icon name="bold" size={20} /></button>
-        <button type="button" className="tb-btn keep-focus" onClick={() => exec('italic')} aria-label={t('editor.italic')} data-testid="fmt-italic"><Icon name="italic" size={20} /></button>
-        <button type="button" className="tb-btn keep-focus" onClick={() => exec('underline')} aria-label={t('editor.underline')}><Icon name="underline" size={20} /></button>
+      <nav className="editor-toolbar" aria-label="Muharrir asboblari" onMouseDown={(e) => { if ((e.target as HTMLElement).closest('.keep-focus')) e.preventDefault(); }}>
+        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('bold')} aria-label="Qalin (B)" title="Qalin" data-testid="fmt-bold"><Icon name="bold" size={20} /></button>
+        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('italic')} aria-label="Kursiv (I)" title="Kursiv" data-testid="fmt-italic"><Icon name="italic" size={20} /></button>
+        <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('underline')} aria-label="Tagiga chizish (U)" title="Tagiga chizish" data-testid="fmt-underline"><Icon name="underline" size={20} /></button>
         <span className="tb-sep" />
-        <button type="button" className="tb-btn" onClick={() => setSheet('format')} disabled={!active} aria-label={t('editor.format')} data-testid="fmt-sheet"><Icon name="type" size={20} /><span>{t('editor.format')}</span></button>
-        <button type="button" className="tb-btn" onClick={() => setSheet('insert')} aria-label={t('editor.insert')} data-testid="insert-sheet"><Icon name="plus" size={20} /><span>{t('editor.insert')}</span></button>
-        <button type="button" className="tb-btn tb-ai keep-focus" onClick={openAssistant} aria-label={t('editor.ai')} data-testid="ai-open"><Icon name="sparkles" size={20} /><span>AI</span></button>
+        <button type="button" className="tb-btn tb-labeled" onClick={() => setSheet('insert')} data-testid="insert-sheet"><Icon name="plus" size={20} /><span>Qo‘shish</span></button>
+        {(ai.status === 'ready' || ai.status === 'needs-login' || ai.status === 'demo') && (
+          <button type="button" className="tb-btn tb-labeled tb-ai keep-focus" onClick={openAssistant} data-testid="ai-open"><Icon name="sparkles" size={20} /><span>AI yordamchi</span></button>
+        )}
       </nav>
 
       {/* ---------------------------------------------------------- sheets */}
@@ -328,23 +409,27 @@ function Editor({ initial }: { initial: Book }) {
         <ChapterList book={book} current={chapter.id} onSelect={(id) => { selectChapter(id); setSheet(null); }} onAdd={addChapter} onRename={renameChapter} onDelete={deleteChapter} onMove={moveChapter} />
       </Sheet>
 
-      <Sheet open={sheet === 'insert'} onClose={() => setSheet(null)} title={t('editor.insert')} size="sm">
-        <div className="insert-grid">
-          {INSERTS.map((x) => (
-            <button key={x.label} type="button" className="insert-tile" data-testid={`insert-${x.label.split('.').pop()}`}
-              onClick={() => { setSheet(null); insertAfter(active ?? chapter.blocks[chapter.blocks.length - 1]?.id ?? null, createBlock(x.type, (x.init ?? {}) as never)); }}>
-              <Icon name={x.icon} size={22} /><span>{t(x.label)}</span>
+      <Sheet open={sheet === 'insert'} onClose={() => { setSheet(null); setMoreInserts(false); }} title="Qo‘shish" size="sm">
+        <div className="insert-menu" role="menu">
+          {MAIN_INSERTS.map((x) => (
+            <button key={x.id} type="button" role="menuitem" className="insert-row" data-testid={`insert-${x.id}`} onClick={() => insertFromMenu(x.type, x.init)}>
+              <span className="insert-ic"><Icon name={x.icon} size={20} /></span>
+              <span className="insert-txt"><strong>{x.label}</strong>{x.hint && <small>{x.hint}</small>}</span>
             </button>
           ))}
+          <button type="button" className="insert-more" aria-expanded={moreInserts} onClick={() => setMoreInserts((v) => !v)} data-testid="insert-more">
+            <Icon name={moreInserts ? 'chevronUp' : 'chevronDown'} size={16} /> Boshqa bloklar
+          </button>
+          {moreInserts && (
+            <div className="insert-grid">
+              {INSERTS.map((x) => (
+                <button key={x.label} type="button" className="insert-tile" data-testid={`insert-${x.label.split('.').pop()}`} onClick={() => insertFromMenu(x.type, x.init ?? {})}>
+                  <Icon name={x.icon} size={20} /><span>{t(x.label)}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
-      </Sheet>
-
-      <Sheet open={sheet === 'format'} onClose={() => setSheet(null)} title={t('editor.format')} size="sm">
-        {(() => {
-          const blk = chapter.blocks.find((x) => x.id === active);
-          if (!blk) return <p className="muted">{t('assistant.noTarget')}</p>;
-          return <BlockFormat blk={blk} onTurn={(ty, o) => { turnInto(blk.id, ty, o); setSheet(null); }} onAlign={(a) => setAlign(blk.id, a)} />;
-        })()}
       </Sheet>
 
       <Sheet open={sheet === 'block' && !!menuTarget} onClose={() => setSheet(null)} title={t('editor.blockActions')} size="sm">
@@ -362,7 +447,7 @@ function Editor({ initial }: { initial: Book }) {
       </Sheet>
 
       <Sheet open={sheet === 'details'} onClose={() => setSheet(null)} title={t('editor.details')} size="md">
-        <BookDetails book={book} onChange={(fn) => update(fn, 'details')} onSaved={() => void ed.saveNow()} />
+        <BookDetails book={book} single={single} onLayout={(l) => void setLayout(l)} onChange={(fn) => update(fn, 'details')} onSaved={() => void ed.saveNow()} />
       </Sheet>
 
       <Sheet open={sheet === 'preview'} onClose={() => setSheet(null)} title={t('editor.preview')} size="lg"
@@ -372,18 +457,22 @@ function Editor({ initial }: { initial: Book }) {
         </div>
       </Sheet>
 
-      {assistTarget && <AssistantSheet open={sheet === 'assistant'} onClose={() => setSheet(null)} target={assistTarget} onApply={applyAssistant} />}
+      {assistTarget && <AssistantSheet open={sheet === 'assistant'} onClose={() => setSheet(null)} target={assistTarget} onApply={applyAssistant} assistant={ai.assistant} status={ai.status} />}
     </div>
   );
 }
 
-function SaveChip({ status }: { status: SaveStatus }) {
-  const { t } = useSettings();
+function SaveChip({ status, onRetry }: { status: SaveStatus; onRetry: () => void }) {
   const map: Record<SaveStatus, [string, IconName]> = {
-    saved: [t('common.saved'), 'check'], saving: [t('common.saving'), 'clock'], dirty: [t('common.unsaved'), 'edit'], error: [t('common.saveError'), 'alert'],
+    saved: ['Saqlandi', 'check'], saving: ['Saqlanmoqda…', 'clock'], dirty: ['Saqlanmoqda…', 'clock'], error: ['Saqlashda xatolik — qayta urinish', 'alert'],
   };
   const [label, icon] = map[status];
-  return <small className={`save-chip is-${status}`} role="status" aria-live="polite" data-testid="save-status" data-status={status}><Icon name={icon} size={12} strokeWidth={2.4} /> {label}</small>;
+  return (
+    <small className={`save-chip is-${status}`} role="status" aria-live="polite" data-testid="save-status" data-status={status}
+      onClick={status === 'error' ? (e) => { e.stopPropagation(); onRetry(); } : undefined}>
+      <Icon name={icon} size={12} strokeWidth={2.4} /> {label}
+    </small>
+  );
 }
 
 function BlockFormat({ blk, onTurn, onAlign }: { blk: Block; onTurn: (t: 'paragraph' | 'heading' | 'quote' | 'list', o?: { level?: 1 | 2 | 3; ordered?: boolean }) => void; onAlign: (a: Align) => void }) {
@@ -450,7 +539,7 @@ function ChapterList({ book, current, onSelect, onAdd, onRename, onDelete, onMov
 
 const CATS: BookCategory[] = ['education', 'business', 'self-development', 'fiction', 'children', 'academic', 'guide', 'journal', 'technology', 'finance', 'other'];
 
-function BookDetails({ book, onChange, onSaved }: { book: Book; onChange: (fn: (b: Book) => Book) => void; onSaved: () => void }) {
+function BookDetails({ book, single, onLayout, onChange, onSaved }: { book: Book; single: boolean; onLayout: (l: 'chapters' | 'single') => void; onChange: (fn: (b: Book) => Book) => void; onSaved: () => void }) {
   const { t } = useSettings();
   const set = (patch: Partial<Book>) => onChange((b) => {
     const next = { ...b, ...patch };
@@ -470,6 +559,10 @@ function BookDetails({ book, onChange, onSaved }: { book: Book; onChange: (fn: (
           <select id="d-lang" className="input" value={book.language} onChange={(e) => set({ language: e.target.value as BookLanguage })}>{(['uz', 'en', 'ru'] as const).map((l) => <option key={l} value={l}>{t(`lang.${l}` as MessageKey)}</option>)}</select>
         </Field>
       </div>
+      <Field label="Kitob tuzilishi" hint={single ? 'Boblarsiz, bitta uzluksiz matn.' : `${book.chapters.length} ta bob. Bitta matnga o‘tkazilsa, bob nomlari sarlavha bo‘lib qoladi.`}>
+        <Segmented value={single ? 'single' : 'chapters'} label="Kitob tuzilishi" onChange={(v) => onLayout(v as 'chapters' | 'single')}
+          options={[{ value: 'chapters', label: 'Boblar bilan', icon: 'list' }, { value: 'single', label: 'Bitta yaxlit matn', icon: 'file' }]} />
+      </Field>
       <Field label={t('editor.status')}>
         <Segmented value={book.status} label={t('editor.status')} onChange={(v) => set({ status: v })} options={[{ value: 'draft', label: t('status.draft') }, { value: 'completed', label: t('status.completed'), icon: 'check' }]} />
       </Field>

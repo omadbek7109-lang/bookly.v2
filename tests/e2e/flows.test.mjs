@@ -93,6 +93,8 @@ test('editor: typing, autosave, split, insert blocks, chapters reorder, undo/red
   const { ctx, page } = await newPage();
   await page.click('[data-testid=fab-create]');
   await page.click('[data-testid=create-blank]');
+  await page.click('[data-testid=mode-chapters]');
+  await page.click('[data-testid=new-create]');
   await page.waitForSelector('[data-testid=editor]');
   const ed = page.locator('[data-testid=blocks] .editable').first();
   await ed.click();
@@ -111,6 +113,7 @@ test('editor: typing, autosave, split, insert blocks, chapters reorder, undo/red
   // insert heading, table, divider, list, page break
   for (const k of ['heading', 'table', 'divider', 'list', 'pagebreak', 'quote']) {
     await page.click('[data-testid=insert-sheet]');
+    if (!['heading', 'quote'].includes(k)) await page.click('[data-testid=insert-more]');
     await page.click(`[data-testid=insert-${k}]`);
   }
   await page.waitForTimeout(200);
@@ -123,7 +126,10 @@ test('editor: typing, autosave, split, insert blocks, chapters reorder, undo/red
   await page.click('[data-testid=redo]');
   assert.equal(await page.locator('[data-testid=blocks] .blk-wrap').count(), before, 'redo restores it');
   // turn into heading via block menu
-  await page.locator('[data-testid=block-handle]').first().click();
+  // the block menu is hidden until a block is being edited
+  assert.equal(await page.locator('.blk-wrap:not(.is-active) [data-testid=block-handle]').first().evaluate((el) => getComputedStyle(el).opacity), '0', 'handle hidden for inactive blocks');
+  await page.locator('[data-testid=blocks] .editable').first().click();
+  await page.locator('.blk-wrap.is-active [data-testid=block-handle]').click();
   await page.click('[data-testid=turn-h2]');
   assert.equal(await page.locator('[data-testid=blocks] .blk-heading').count() >= 2, true);
   // chapters: add & reorder
@@ -322,6 +328,143 @@ test('reader shows cover, TOC, chapter navigation, typography and progress', asy
   await ctx.close();
 });
 
+test('two book modes: "Bitta yaxlit matn" has no chapters anywhere, "Boblar bilan" manages chapters', async () => {
+  const { ctx, page } = await newPage({ width: 360, height: 740 });
+  // --- one continuous text
+  await page.click('[data-testid=fab-create]');
+  await page.click('[data-testid=create-blank]');
+  await page.screenshot({ path: path.join(OUT, 'new-book-modes.png') });
+  await page.fill('[data-testid=new-title]', 'Yaxlit hikoya');
+  await page.click('[data-testid=mode-single]');
+  await page.click('[data-testid=new-create]');
+  await page.waitForSelector('[data-testid=editor][data-layout=single]');
+  assert.equal(await page.locator('[data-testid=chapter-title]').count(), 0, 'no chapter title in single mode');
+  assert.equal(await page.locator('[data-testid=chapter-picker]').count(), 0, 'no chapter picker in single mode');
+  const ph = await page.locator('[data-testid=blocks] .editable').first().getAttribute('data-placeholder');
+  assert.equal(ph, 'Matningizni shu yerga yozing...');
+  await page.locator('[data-testid=blocks] .editable').first().click();
+  await page.keyboard.type('Bir bor ekan, bir yo‘q ekan.');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('Uzluksiz matn davom etadi.');
+  // "+" menu: subheading turns the empty paragraph under the cursor into a heading
+  await page.keyboard.press('Enter');
+  await page.click('[data-testid=insert-sheet]');
+  await page.screenshot({ path: path.join(OUT, 'insert-menu.png') });
+  for (const k of ['heading', 'subheading', 'paragraph', 'quote', 'image']) assert.equal(await page.locator(`[data-testid=insert-${k}]`).count(), 1, `+ menu has ${k}`);
+  await page.click('[data-testid=insert-subheading]');
+  await page.keyboard.type('Ikkinchi qism');
+assert.equal(await page.locator('[data-testid=blocks] .blk-heading.lvl-2').count(), 1);
+  // image
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkaPhfDwAEhgGAWpBnOQAAAABJRU5ErkJggg==', 'base64');
+  await page.click('[data-testid=insert-sheet]');
+  await page.click('[data-testid=insert-image]');
+  await page.setInputFiles('[data-testid=image-input]', { name: 'r.png', mimeType: 'image/png', buffer: png });
+  await page.waitForSelector('.blk-image img');
+  await waitSaved(page);
+  await page.screenshot({ path: path.join(OUT, 'editor-single-360.png') });
+  // no horizontal overflow at 360 px
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'fits 360px');
+  // persists after reload
+  await page.reload();
+  await page.waitForSelector('[data-testid=editor][data-layout=single]');
+  const txt = await page.locator('[data-testid=blocks]').innerText();
+  assert.ok(txt.includes('Bir bor ekan') && txt.includes('Uzluksiz matn') && txt.includes('Ikkinchi qism'), 'text persisted');
+  assert.equal(await page.locator('.blk-image img').count(), 1, 'image persisted');
+  // export: DOCX has no artificial chapter heading
+  const id = page.url().match(/editor\/([^?/]+)/)[1];
+  await go(page, `#/export/${id}`);
+  await page.click('[data-testid=fmt-docx]');
+  const out = await download(page, () => page.click('[data-testid=export-run]'));
+  const zip = await (await import('jszip')).default.loadAsync(out.bytes);
+  const xml = await zip.file('word/document.xml').async('string');
+  assert.ok(xml.includes('Bir bor ekan') && !xml.includes('1-BOB') && !xml.includes('1-bob'), 'no artificial chapters in export');
+  // reader: no table of contents
+  await go(page, `#/reader/${id}`);
+  await page.waitForSelector('[data-testid=reader-start]');
+  assert.equal(await page.locator('[data-testid=reader-toc]').count(), 0);
+
+  // --- with chapters: add, rename, reorder, delete, switch, then merge into one text without losing anything
+  await go(page, '#/');
+  await page.click('[data-testid=fab-create]');
+  await page.click('[data-testid=create-blank]');
+  await page.fill('[data-testid=new-title]', 'Bobli kitob');
+  await page.click('[data-testid=new-create]'); // "Boblar bilan" is the default
+  await page.waitForSelector('[data-testid=editor][data-layout=chapters]');
+  await page.fill('[data-testid=chapter-title]', 'Boshlanish');
+  await page.locator('[data-testid=blocks] .editable').first().click();
+  await page.keyboard.type('Birinchi bob matni.');
+  await page.click('[data-testid=chapter-picker]');
+  await page.click('.sheet [data-testid=add-chapter]');
+  assert.equal(await page.locator('[data-testid=chapter-title]').inputValue(), '2-bob', 'auto name is only a suggestion');
+  await page.fill('[data-testid=chapter-title]', 'Davomi');
+  await page.locator('[data-testid=blocks] .editable').first().click();
+  await page.keyboard.type('Ikkinchi bob matni.');
+  await page.click('[data-testid=chapter-picker]');
+  await page.click('.sheet [data-testid=add-chapter]');
+  await page.click('[data-testid=chapter-picker]');
+  page.once('dialog', () => {});
+  await page.locator('.sheet [data-testid=ch-delete]').nth(2).click();
+  await page.click('[data-testid=dialog-confirm]');
+  await page.waitForFunction(() => document.querySelectorAll('.sheet [data-testid=chapter-list] li').length === 2);
+  await page.keyboard.press('Escape');
+  await waitSaved(page);
+  // switch to one continuous text: chapter titles become headings, nothing is lost
+  await page.click('[data-testid=editor-details]');
+  await page.locator('.sheet .segmented button', { hasText: 'Bitta yaxlit matn' }).click();
+  await page.click('[data-testid=dialog-confirm]');
+  await page.waitForSelector('[data-testid=editor][data-layout=single]');
+  await page.keyboard.press('Escape');
+  const merged = await page.locator('[data-testid=blocks]').innerText();
+  for (const s of ['Boshlanish', 'Birinchi bob matni.', 'Davomi', 'Ikkinchi bob matni.']) assert.ok(merged.includes(s), `merged keeps "${s}"`);
+  await ctx.close();
+});
+
+test('AI yordamchi: hidden when no AI is connected; demo shows the 8 tasks and the 4 choices', async () => {
+  // no ?fastAI / ?demoAI and no server → the AI button is not shown at all
+  const ctx0 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const p0 = await ctx0.newPage();
+  await p0.goto(`${origin}${SITE_BASE}?noIntro=1`);
+  await p0.waitForSelector('.home');
+  await p0.click('[data-testid=fab-create]');
+  await p0.click('[data-testid=create-blank]');
+  await p0.click('[data-testid=new-create]');
+  await p0.waitForSelector('[data-testid=editor]');
+  await p0.waitForTimeout(1500);
+  assert.equal(await p0.locator('[data-testid=ai-open]').count(), 0, 'no fake AI button');
+  for (const id of ['fmt-bold', 'fmt-italic', 'fmt-underline', 'insert-sheet']) assert.equal(await p0.locator(`[data-testid=${id}]`).count(), 1, id);
+  await ctx0.close();
+
+  const { ctx, page } = await newPage({ width: 360, height: 740 });
+  await createAiBook(page, 'Kitob o‘qish foydasi', 3);
+  const para = page.locator('[data-testid=blocks] .blk-paragraph .editable').nth(1);
+  const original = await para.innerText();
+  await para.click();
+  await page.click('[data-testid=ai-open]');
+  for (const id of ['continue', 'rewrite', 'grammar', 'shorten', 'expand', 'ideas', 'dialog', 'titles']) assert.equal(await page.locator(`[data-testid=ai-${id}]`).count(), 1, `task ${id}`);
+  await page.screenshot({ path: path.join(OUT, 'assistant-tasks-360.png') });
+  await page.click('[data-testid=ai-continue]');
+  await page.waitForSelector('[data-testid=ai-result]');
+  for (const id of ['ai-insert', 'ai-retry', 'ai-copy']) assert.equal(await page.locator(`[data-testid=${id}]`).count(), 1, id);
+  assert.equal(await page.locator('[data-testid=ai-accept]').count(), 0, '"continue" cannot replace');
+  assert.equal(await para.innerText(), original, 'nothing changes before the writer chooses');
+  await page.click('[data-testid=ai-retry]');
+  await page.waitForSelector('[data-testid=ai-result]');
+  const before = await page.locator('[data-testid=blocks] .blk-wrap').count();
+  await page.click('[data-testid=ai-insert]');
+  await page.waitForTimeout(200);
+  assert.ok(await page.locator('[data-testid=blocks] .blk-wrap').count() > before, 'inserted below');
+  assert.equal(await para.innerText(), original, 'insert keeps the original');
+  // title suggestion becomes the chapter title
+  await para.click();
+  await page.click('[data-testid=ai-open]');
+  await page.click('[data-testid=ai-titles]');
+  await page.waitForSelector('[data-testid=ai-title-item]');
+  const pick = (await page.locator('[data-testid=ai-title-item] .list-row-text > span').first().innerText()).trim();
+  await page.locator('[data-testid=ai-title-item]').first().click();
+  assert.equal(await page.locator('[data-testid=chapter-title]').inputValue(), pick);
+  await ctx.close();
+});
+
 test('templates: preview and create a book from a template', async () => {
   const { ctx, page } = await newPage();
   await go(page, '#/templates');
@@ -362,14 +505,37 @@ test('responsive layouts have no horizontal overflow (320 → desktop)', async (
 });
 
 test('profile settings: theme, name and backup', async () => {
-  const { ctx, page } = await newPage();
+  const { ctx, page } = await newPage({ width: 360, height: 740 });
   await go(page, '#/profile');
+  // A. profile card: name is edited in its own sheet
+  await page.click('[data-testid=profile-edit]');
   await page.fill('[data-testid=profile-name]', 'Muhayyo');
+  await page.click('[data-testid=profile-done]');
+  assert.equal(await page.locator('[data-testid=profile-display-name]').innerText(), 'Muhayyo');
+  // B. only two stats
+  assert.deepEqual(await page.locator('.stats-grid .stat span').allInnerTexts(), ['Kitoblarim', 'Boblarim']);
+  // removed: replay intro; renamed: Zaxiralash
+  assert.equal(await page.locator('[data-testid=replay-intro]').count(), 0);
+  assert.ok((await page.locator('.page').innerText()).includes('Zaxiralash'));
+  // C. language and theme
+  for (const l of ['O‘zbekcha', 'Русский', 'English']) assert.equal(await page.getByRole('tab', { name: l }).count(), 1, l);
   await page.click('text=Yorug‘');
   assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
   const b = await download(page, () => page.click('[data-testid=backup]'));
   const json = JSON.parse(b.bytes.toString());
   assert.equal(json.app, 'bookly');
+  // D. export defaults are one compact row that expands
+  assert.equal(await page.locator('text=Sahifa o‘lchami (PDF)').count(), 0);
+  await page.click('[data-testid=export-defaults]');
+  await page.click('.disclosure-body .segmented button:has-text("A4")');
+  assert.match(await page.locator('[data-testid=export-defaults]').innerText(), /A4/);
+  // E. deleting everything needs the confirmation word — a wrong word deletes nothing
+  await page.click('[data-testid=clear-all]');
+  await page.fill('.sheet input', 'ha');
+  await page.click('[data-testid=dialog-confirm]');
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-testid=profile-display-name]').innerText(), 'Muhayyo', 'nothing deleted');
+  await page.screenshot({ path: path.join(OUT, 'profile-360.png'), fullPage: true });
   await go(page, '#/');
   await page.waitForSelector('.home-greeting');
   assert.match(await page.locator('.home-greeting').innerText(), /Muhayyo/);

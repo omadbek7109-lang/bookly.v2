@@ -4,7 +4,7 @@ import { back, navigate, routes } from '../../app/router';
 import { BookCover } from '../../components/BookCover';
 import { Icon } from '../../components/Icon';
 import { Button, EmptyState, IconButton, ListRow, Segmented, Sheet, Spinner } from '../../components/ui';
-import type { Book } from '../../models/book';
+import { isSingleText, type Book } from '../../models/book';
 import { books } from '../../services/storage/repository';
 import { ChapterContent } from './BookContent';
 
@@ -31,6 +31,7 @@ export default function ReaderPage({ bookId }: { bookId: string }) {
   }, [bookId]);
 
   const total = book?.chapters.length ?? 0;
+  const single = !!book && isSingleText(book);
   const go = useCallback((i: number) => {
     setIdx(Math.max(-1, Math.min(total - 1, i)));
     window.scrollTo({ top: 0 });
@@ -94,8 +95,8 @@ export default function ReaderPage({ bookId }: { bookId: string }) {
     <div ref={root} className={`reader mode-${r.mode} font-${r.font} ${full ? 'is-full' : ''}`} style={style} data-testid="reader">
       <header className="reader-bar">
         <IconButton icon="chevronLeft" label={t('common.back')} onClick={() => back(routes.books())} />
-        <div className="reader-title"><strong>{book.title}</strong><small>{idx < 0 ? book.author : t('reader.chapterOf', { i: idx + 1, n: total })}</small></div>
-        <IconButton icon="list" label={t('reader.toc')} onClick={() => setSheet('toc')} data-testid="reader-toc" />
+        <div className="reader-title"><strong>{book.title}</strong><small>{idx < 0 || single ? book.author : t('reader.chapterOf', { i: idx + 1, n: total })}</small></div>
+        {!single && <IconButton icon="list" label={t('reader.toc')} onClick={() => setSheet('toc')} data-testid="reader-toc" />}
         <IconButton icon="type" label={t('reader.settings')} onClick={() => setSheet('settings')} data-testid="reader-settings" />
         <IconButton icon={full ? 'minimize' : 'maximize'} label={full ? t('reader.exitFullscreen') : t('reader.fullscreen')} onClick={() => void toggleFull()} />
       </header>
@@ -110,10 +111,14 @@ export default function ReaderPage({ bookId }: { bookId: string }) {
             {book.author && <p className="reader-author">{t('reader.by', { a: book.author })}</p>}
             {book.description && <p className="reader-desc">{book.description}</p>}
             <Button icon="bookOpen" size="lg" onClick={() => go(0)} data-testid="reader-start">{t('reader.startReading')}</Button>
-            <h2 className="reader-toc-title">{t('reader.toc')}</h2>
-            <ol className="reader-toc">
-              {book.chapters.map((c, i) => <li key={c.id}><button type="button" onClick={() => go(i)}><span>{i + 1}.</span> {c.title || `${i + 1}-bob`}</button></li>)}
-            </ol>
+            {!single && (
+              <>
+                <h2 className="reader-toc-title">{t('reader.toc')}</h2>
+                <ol className="reader-toc">
+                  {book.chapters.map((c, i) => <li key={c.id}><button type="button" onClick={() => go(i)}><span>{i + 1}.</span> {c.title || `${i + 1}-bob`}</button></li>)}
+                </ol>
+              </>
+            )}
           </section>
         ) : (
           <ChapterContent book={book} chapter={book.chapters[idx]} index={idx} />

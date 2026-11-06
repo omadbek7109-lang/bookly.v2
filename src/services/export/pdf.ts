@@ -5,6 +5,7 @@
  */
 import { PDFDocument, PDFFont, PDFName, PDFPage, PDFArray, StandardFonts, rgb, type RGB } from 'pdf-lib';
 import type { Block, Book } from '../../models/book';
+import { isSingleText } from '../../models/book';
 import { fontById } from '../../models/templates';
 import { parseInline, type Run } from '../../utils/inline';
 import { audioNote, byLabel, chapterDisplayTitle, chapterLabel, exportFilename, tocLabel } from './common';
@@ -188,6 +189,7 @@ async function embedImage(doc: PDFDocument, a: ResolvedAsset) {
 
 export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
   const { book, assets, options } = input;
+  const single = isSingleText(book);
   const doc = await PDFDocument.create();
   const [W, H] = SIZES[options.pageSize] ?? SIZES.A5;
   const small = W < 500;
@@ -258,6 +260,12 @@ export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
   for (let ci = 0; ci < book.chapters.length; ci++) {
     const ch = book.chapters[ci];
     lay.chapter = ci;
+    if (single) {
+      // One continuous text: start on a new page once, then flow every block without chapter headings.
+      if (ci === 0) { lay.newPage(); chapterStart.push(doc.getPageCount() - 1); lay.space(base); }
+      for (const b of ch.blocks) await drawBlock(b);
+      continue;
+    }
     lay.newPage();
     chapterStart.push(doc.getPageCount() - 1);
     lay.space(small ? 40 : 70);
@@ -379,7 +387,7 @@ export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
   let tocPages = 0;
   const tocLine = 22;
   const perTocPage = Math.max(1, Math.floor((H - margin.top - margin.bottom - 70) / tocLine));
-  if (options.includeToc && book.chapters.length) tocPages = Math.ceil(book.chapters.length / perTocPage);
+  if (options.includeToc && book.chapters.length && !single) tocPages = Math.ceil(book.chapters.length / perTocPage);
   const finalNumber = (idx: number) => idx + (idx >= titlePageIndex + 1 ? tocPages : 0) + 1;
 
   for (let i = contentFirst; i < total; i++) {
@@ -388,6 +396,7 @@ export async function exportPdf(input: ExportInput): Promise<ExportOutput> {
     const num = String(finalNumber(i));
     p.drawText(num, { x: (W - ui.regular.widthOfTextAtSize(num, 8.5)) / 2, y: margin.bottom / 2 - 4, size: 8.5, font: ui.regular, color: muted });
     if (meta && meta.chapter !== null && !chapterStart.includes(i)) {
+      if (single) continue;
       const label = toWinAnsi(chapterDisplayTitle(book, book.chapters[meta.chapter], meta.chapter)).slice(0, 70);
       p.drawText(label, { x: margin.left, y: H - margin.top / 2, size: 7.5, font: ui.italic, color: muted });
       p.drawLine({ start: { x: margin.left, y: H - margin.top / 2 - 5 }, end: { x: W - margin.right, y: H - margin.top / 2 - 5 }, thickness: 0.4, color: rgb(0.85, 0.85, 0.9) });

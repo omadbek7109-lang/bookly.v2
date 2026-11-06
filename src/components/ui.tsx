@@ -69,7 +69,10 @@ export function Sheet({ open, onClose, title, children, footer, size = 'md', lab
       document.removeEventListener('keydown', onKey);
       document.body.classList.remove('no-scroll');
       clearTimeout(f);
-      prev?.focus?.({ preventScroll: true });
+      // Return focus to where it was — unless the action that closed the sheet already moved it
+      // (e.g. the editor placed the caret in a newly inserted block).
+      const a = document.activeElement;
+      if (!a || a === document.body || ref.current?.contains(a)) prev?.focus?.({ preventScroll: true });
     };
   }, [open, onClose]);
   if (!visible) return null;

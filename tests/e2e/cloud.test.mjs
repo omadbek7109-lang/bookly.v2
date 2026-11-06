@@ -55,6 +55,7 @@ const go = (page, hash) => page.evaluate((h) => { location.hash = h; }, hash);
 async function createBook(page, title) {
   await page.click('[data-testid=fab-create]');
   await page.click('[data-testid=create-blank]');
+  await page.click('[data-testid=new-create]');
   await page.waitForSelector('[data-testid=editor]');
   await page.click('[data-testid=editor-details]');
   await page.fill('[data-testid=details-title]', title);
@@ -288,7 +289,10 @@ test('Telegram Mini App: launch hash is cleaned, user is signed in automatically
   await go(page, '#/profile');
   await page.waitForSelector('[data-testid=account-email]');
   assert.equal(await page.locator('[data-testid=account-email]').innerText(), 'Telegram: Malika');
-  assert.match(await page.locator('.profile-card').innerText(), /Telegram: Malika/);
+  const card = await page.locator('.profile-card').innerText();
+  assert.match(card, /Malika/);
+  assert.match(card, /Telegram bilan ulangan/);
+  assert.ok(!card.includes('Telegram: Malika'), 'Telegram name is not repeated');
   await page.screenshot({ path: path.join(OUT, 'cloud-telegram.png') });
 
   // Export → the user chooses: download or receive the file from the bot in their Telegram chat.
@@ -311,6 +315,48 @@ test('Telegram Mini App: launch hash is cleaned, user is signed in automatically
   assert.equal(fake.sentFiles.length, 1, 'file sent through telegram-bot');
   assert.match(fake.sentFiles[0], /\.pdf$/);
   await page.screenshot({ path: path.join(OUT, 'export-telegram.png') });
+  await ctx.close();
+});
+
+test('AI yordamchi through the server: needs sign-in, then real answers; nothing changes until the writer chooses', async () => {
+  const fake = createFakeSupabase({ aiConfigured: true });
+  await fake.fetch(`${SUPA}/auth/v1/signup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'yozuvchi@test.uz', password: 'parol-123456' }) });
+  const ctx = await browser.newContext({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true, colorScheme: 'dark' });
+  await ctx.route(`${SUPA}/**`, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
+    const r = await fake.handle(req.method(), req.url(), req.headers(), req.postDataBuffer());
+    await route.fulfill({ status: r.status, headers: { ...CORS, ...r.headers }, body: r.body });
+  });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await page.goto(`${origin}${SITE_BASE}?noIntro=1`);
+  await page.waitForSelector('.home');
+  await page.click('[data-testid=fab-create]');
+  await page.click('[data-testid=create-blank]');
+  await page.click('[data-testid=new-create]');
+  await page.waitForSelector('[data-testid=editor]');
+  const para = page.locator('[data-testid=blocks] .editable').first();
+  await para.click();
+  await page.keyboard.type('Kitob yozish qiyin emas');
+  await page.click('[data-testid=ai-open]');
+  // signed out → the sheet explains and offers sign-in instead of failing
+  await page.waitForSelector('[data-testid=ai-login]');
+  await page.click('[data-testid=ai-login]');
+  await page.fill('[data-testid=auth-email]', 'yozuvchi@test.uz');
+  await page.fill('[data-testid=auth-password]', 'parol-123456');
+  await page.click('[data-testid=auth-submit]');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=ai-login]'), null, { timeout: 10000 });
+  await page.keyboard.press('Escape');
+  await para.click();
+  await page.click('[data-testid=ai-open]');
+  await page.click('[data-testid=ai-rewrite]');
+  await page.waitForSelector('[data-testid=ai-result]');
+  assert.equal(await para.innerText(), 'Kitob yozish qiyin emas', 'unchanged before choosing');
+  assert.match(await page.locator('[data-testid=ai-result]').innerText(), /AI\(rewrite\): Kitob yozish qiyin emas/);
+  await page.click('[data-testid=ai-accept]');
+  await page.waitForFunction(() => document.querySelector('[data-testid=blocks] .editable')?.textContent?.startsWith('AI(rewrite)'));
+  assert.deepEqual(fake.aiCalls, ['rewrite']);
   await ctx.close();
 });
 

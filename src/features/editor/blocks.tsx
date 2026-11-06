@@ -72,7 +72,7 @@ const TextEditor = memo(function TextEditor({ block, h }: { block: TextBlock; h:
   const { t } = useSettings();
   const ref = useRef<HTMLDivElement>(null);
   const last = useEditableSync(ref, block.html);
-  useEffect(() => { h.register(ref.current); return () => h.register(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { h.register(ref.current); return () => h.register(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const emit = () => {
     const el = ref.current;
@@ -148,7 +148,7 @@ const ListEditor = memo(function ListEditor({ block, h }: { block: ListBlock; h:
     if (last.current !== html) ref.current.innerHTML = html;
     last.current = html;
   }, [html]);
-  useEffect(() => { h.register(ref.current); return () => h.register(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { h.register(ref.current); return () => h.register(null); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const read = () => {
     const el = ref.current!;
@@ -305,7 +305,7 @@ export function BlockView({ block, h, active }: { block: Block; h: BlockHandlers
     <div className={`blk-wrap ${active ? 'is-active' : ''}`}>
       {inner}
       <button type="button" className="blk-handle" onMouseDown={(e) => e.preventDefault()} onClick={h.onMenu} aria-label={t('editor.blockActions')} data-testid="block-handle">
-        <Icon name="grip" size={18} />
+        <Icon name="moreH" size={18} />
       </button>
     </div>
   );

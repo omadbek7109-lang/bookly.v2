@@ -4,6 +4,7 @@ import {
   Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType,
 } from 'docx';
 import type { Align, Block } from '../../models/book';
+import { isSingleText } from '../../models/book';
 import { fontById } from '../../models/templates';
 import { parseInline, type Run } from '../../utils/inline';
 import { audioNote, byLabel, chapterDisplayTitle, chapterLabel, exportFilename, hexColor, tocLabel, u8 } from './common';
@@ -32,6 +33,7 @@ function runs(rs: Run[], extra: { size?: number; color?: string; italics?: boole
 
 export async function exportDocx(input: ExportInput): Promise<ExportOutput> {
   const { book, assets, options } = input;
+  const single = isSingleText(book);
   const accent = hexColor(book.theme.accent);
   const ink = hexColor(book.theme.ink, '1c1b29');
   const bodyFont = fontById(book.theme.bodyFont).office;
@@ -62,7 +64,7 @@ export async function exportDocx(input: ExportInput): Promise<ExportOutput> {
   if (book.description) front.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 800 }, children: runs(parseInline(book.description), { size: 20, color: '6B6B7B' }) }));
 
   // --- table of contents (static, with internal links)
-  if (options.includeToc && book.chapters.length) {
+  if (options.includeToc && book.chapters.length && !single) {
     front.push(new Paragraph({ children: [new PageBreak()] }));
     front.push(new Paragraph({ heading: HeadingLevel.HEADING_1, spacing: { after: 300 }, children: [new TextRun({ text: tocLabel(book) })] }));
     book.chapters.forEach((ch, i) => {
@@ -75,6 +77,12 @@ export async function exportDocx(input: ExportInput): Promise<ExportOutput> {
 
   // --- chapters
   book.chapters.forEach((ch, ci) => {
+    if (single) {
+      // One continuous text: no chapter label or heading, just a page break after the title page.
+      if (ci === 0) children.push(new Paragraph({ pageBreakBefore: true, children: [] }));
+      for (const b of ch.blocks) children.push(...blockToDocx(b));
+      return;
+    }
     children.push(new Paragraph({
       pageBreakBefore: true,
       spacing: { before: 1200, after: 80 },

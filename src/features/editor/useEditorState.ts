@@ -23,7 +23,7 @@ export function useEditorState(initial: Book) {
   const [, force] = useState(0);
   latest.current = book;
 
-  const persist = useCallback(async () => {
+  const persist = useCallback(async (): Promise<void> => {
     if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     const snapshot = latest.current;
     if (snapshot === savedRef.current) return;
@@ -39,6 +39,8 @@ export function useEditorState(initial: Book) {
       } catch (e) {
         console.error('[bookly] save failed', e);
         setStatus('error');
+        // Keep the text in memory and retry automatically; the status chip also offers a manual retry.
+        if (!timer.current) timer.current = setTimeout(() => { timer.current = null; void persist(); }, 4000);
       } finally { saving.current = null; }
     })();
     await saving.current;

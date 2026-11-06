@@ -72,13 +72,13 @@ export default function CloudPage() {
   };
 
   if (!cloud.available) {
-    return <div className="page"><PageHeader title="Cloud zaxira" onBack={() => back(routes.profile())} /><EmptyState icon="globe" title="Cloud sozlanmagan" text="Bu nashrda Supabase manzili ko‘rsatilmagan. Ilova lokal rejimda to‘liq ishlaydi." /></div>;
+    return <div className="page"><PageHeader title="Zaxiralash" onBack={() => back(routes.profile())} /><EmptyState icon="globe" title="Cloud sozlanmagan" text="Bu nashrda Supabase manzili ko‘rsatilmagan. Ilova lokal rejimda to‘liq ishlaydi." /></div>;
   }
 
   if (!cloud.user) {
     return (
       <div className="page cloud-page">
-        <PageHeader title="Cloud zaxira" subtitle="Ixtiyoriy" onBack={() => back(routes.profile())} />
+        <PageHeader title="Zaxiralash" subtitle="Ixtiyoriy" onBack={() => back(routes.profile())} />
         <section className="cloud-hero glass">
           <span className="quick-icon tone-indigo"><Icon name="globe" size={24} /></span>
           <div>
@@ -102,7 +102,7 @@ export default function CloudPage() {
 
   return (
     <div className="page cloud-page">
-      <PageHeader title="Cloud zaxira" subtitle={accountLabel(cloud.user) ?? undefined} onBack={() => back(routes.profile())}
+      <PageHeader title="Zaxiralash" subtitle={accountLabel(cloud.user) ?? undefined} onBack={() => back(routes.profile())}
         actions={<IconButton icon="refresh" label="Holatni yangilash" onClick={() => void run('refresh', () => cloud.engine!.refreshStatus())} />} />
 
       <section className="cloud-summary glass" data-testid="cloud-summary">

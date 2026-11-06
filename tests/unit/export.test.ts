@@ -139,3 +139,33 @@ test('EPUB 3: correct container, stored mimetype, nav, spine order and well-form
   }
   assert.ok(fs.existsSync(file));
 });
+
+test('single-text book ("bitta yaxlit matn"): no artificial chapters in any format', async () => {
+  const { book: base, assets, cover } = sampleBook();
+  const ch = { ...base.chapters[0], title: 'Ichki nom' };
+  const book = { ...base, chapters: [ch], metadata: { ...base.metadata, layout: 'single' as const } };
+  const opts = { ...DEFAULT_EXPORT_OPTIONS, includeToc: true };
+
+  const pdf = await exportPdf({ book, assets, cover, options: opts });
+  const pdfFile = save('single.pdf', pdf.bytes);
+  if (has('pdftotext')) {
+    const txt = spawnSync('pdftotext', ['-layout', pdfFile, '-']).stdout.toString();
+    assert.ok(!txt.includes('Mundarija'), 'no TOC');
+    assert.ok(!txt.includes('1-bob') && !txt.includes('1-BOB') && !txt.includes('Ichki nom'), 'no chapter label/title');
+    assert.ok(txt.includes('Birinchi band'), 'body text present');
+  }
+
+  const epub = await JSZip.loadAsync((await exportEpub({ book, assets, cover, options: opts })).bytes);
+  const x = await epub.file('OEBPS/chapter-1.xhtml')!.async('string');
+  assert.ok(!x.includes('chapter-title') && !x.includes('chapter-label') && !x.includes('Ichki nom'));
+  const opf = await epub.file('OEBPS/content.opf')!.async('string');
+  assert.match(opf, /idref="nav" linear="no"/);
+
+  const docx = await JSZip.loadAsync((await exportDocx({ book, assets, cover, options: opts })).bytes);
+  const doc = await docx.file('word/document.xml')!.async('string');
+  assert.ok(!doc.includes('Ichki nom') && !doc.includes('1-BOB') && !doc.includes('Mundarija'));
+
+  const pptx = await JSZip.loadAsync((await exportPptx({ book, assets, cover, options: opts })).bytes);
+  const slides = await Promise.all(Object.keys(pptx.files).filter((f) => /^ppt\/slides\/slide\d+\.xml$/.test(f)).map((f) => pptx.file(f)!.async('string')));
+  assert.ok(!slides.some((s) => s.includes('Ichki nom') || s.includes('1-BOB') || s.includes('Mundarija')));
+});

@@ -53,6 +53,9 @@ function services() {
   return singleton;
 }
 
+/** Shared cloud client (null when Supabase is not configured in this build). */
+export const cloudClient = () => services()?.client ?? null;
+
 export function CloudProvider({ children }: { children: ReactNode }) {
   const svc = services();
   const { settings, update } = useSettings();

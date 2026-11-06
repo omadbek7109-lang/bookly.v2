@@ -1,6 +1,7 @@
 /** EPUB 3 exporter (with EPUB 2 NCX fallback) built with JSZip. */
 import JSZip from 'jszip';
 import type { Block, Book } from '../../models/book';
+import { isSingleText } from '../../models/book';
 import { fontById } from '../../models/templates';
 import { escapeXml, parseInline, type Run } from '../../utils/inline';
 import { byLabel, chapterDisplayTitle, chapterLabel, exportFilename, langTag, tocLabel } from './common';
@@ -72,6 +73,7 @@ nav ol { list-style: none; padding-left: 0; } nav li { margin: 0.4em 0; } nav a 
 
 export async function exportEpub(input: ExportInput): Promise<ExportOutput> {
   const { book, assets, options } = input;
+  const single = isSingleText(book);
   const zip = new JSZip();
   zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' });
   zip.file('META-INF/container.xml', `<?xml version="1.0" encoding="UTF-8"?>
@@ -118,7 +120,9 @@ export async function exportEpub(input: ExportInput): Promise<ExportOutput> {
   spine.push('<itemref idref="title"/>');
 
   // --- nav (always present in EPUB 3; shown in reading order only if includeToc)
-  const navItems = book.chapters.map((c, i) => `<li><a href="chapter-${i + 1}.xhtml">${escapeXml(chapterDisplayTitle(book, c, i))}</a></li>`).join('\n      ');
+  const navItems = single
+    ? `<li><a href="chapter-1.xhtml">${escapeXml(book.title)}</a></li>`
+    : book.chapters.map((c, i) => `<li><a href="chapter-${i + 1}.xhtml">${escapeXml(chapterDisplayTitle(book, c, i))}</a></li>`).join('\n      ');
   const nav = `<nav epub:type="toc" id="toc"><h1>${escapeXml(tocLabel(book))}</h1>
     <ol>
       ${navItems}
@@ -130,17 +134,16 @@ export async function exportEpub(input: ExportInput): Promise<ExportOutput> {
   </ol></nav>`;
   zip.file('OEBPS/nav.xhtml', xhtml(book, tocLabel(book), nav));
   manifest.push('<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>');
-  spine.push(`<itemref idref="nav" linear="${options.includeToc ? 'yes' : 'no'}"/>`);
+  spine.push(`<itemref idref="nav" linear="${options.includeToc && !single ? 'yes' : 'no'}"/>`);
 
   // --- chapters
   book.chapters.forEach((ch, i) => {
     const title = chapterDisplayTitle(book, ch, i);
-    const body = [`<section epub:type="chapter" id="chapter-${i + 1}">`,
-      `<p class="chapter-label">${escapeXml(chapterLabel(book, i))}</p>`,
-      `<h1 class="chapter-title">${escapeXml(title)}</h1>`,
+    const body = [`<section epub:type="${single ? 'bodymatter' : 'chapter'}" id="chapter-${i + 1}">`,
+      ...(single ? [] : [`<p class="chapter-label">${escapeXml(chapterLabel(book, i))}</p>`, `<h1 class="chapter-title">${escapeXml(title)}</h1>`]),
       ...ch.blocks.map((b) => blockHtml(b)),
       '</section>'].join('\n');
-    zip.file(`OEBPS/chapter-${i + 1}.xhtml`, xhtml(book, title, body));
+    zip.file(`OEBPS/chapter-${i + 1}.xhtml`, xhtml(book, single ? book.title : title, body));
     manifest.push(`<item id="ch${i + 1}" href="chapter-${i + 1}.xhtml" media-type="application/xhtml+xml"/>`);
     spine.push(`<itemref idref="ch${i + 1}"/>`);
   });
@@ -196,7 +199,7 @@ export async function exportEpub(input: ExportInput): Promise<ExportOutput> {
   <head><meta name="dtb:uid" content="urn:uuid:${uuid}"/><meta name="dtb:depth" content="1"/><meta name="dtb:totalPageCount" content="0"/><meta name="dtb:maxPageNumber" content="0"/></head>
   <docTitle><text>${escapeXml(book.title)}</text></docTitle>
   <navMap>
-${book.chapters.map((c, i) => `    <navPoint id="np${i + 1}" playOrder="${i + 1}"><navLabel><text>${escapeXml(chapterDisplayTitle(book, c, i))}</text></navLabel><content src="chapter-${i + 1}.xhtml"/></navPoint>`).join('\n')}
+${(single ? book.chapters.slice(0, 1) : book.chapters).map((c, i) => `    <navPoint id="np${i + 1}" playOrder="${i + 1}"><navLabel><text>${escapeXml(chapterDisplayTitle(book, c, i))}</text></navLabel><content src="chapter-${i + 1}.xhtml"/></navPoint>`).join('\n')}
   </navMap>
 </ncx>`;
   zip.file('OEBPS/toc.ncx', ncx);

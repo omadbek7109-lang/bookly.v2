@@ -1,6 +1,7 @@
 /** PPTX exporter (pptxgenjs): cover slide, contents, a section slide per chapter and paginated content slides. */
 import PptxGenJS from 'pptxgenjs';
 import type { Block, Book } from '../../models/book';
+import { isSingleText } from '../../models/book';
 import { fontById } from '../../models/templates';
 import { parseInline, plainText, type Run } from '../../utils/inline';
 import { audioNote, base64, byLabel, chapterDisplayTitle, chapterLabel, exportFilename, hexColor, tocLabel, u8 } from './common';
@@ -99,6 +100,7 @@ export function paginateChapter(book: Book, blocks: Block[], chapterTitle: strin
 
 export async function exportPptx(input: ExportInput): Promise<ExportOutput> {
   const { book, assets, options } = input;
+  const single = isSingleText(book);
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
   pptx.title = book.title;
@@ -134,7 +136,7 @@ export async function exportPptx(input: ExportInput): Promise<ExportOutput> {
   cover.addNotes(book.description || book.title);
 
   // --- contents
-  if (options.includeToc && book.chapters.length) {
+  if (options.includeToc && book.chapters.length && !single) {
     const perSlide = 9;
     for (let s = 0; s < book.chapters.length; s += perSlide) {
       const slide = pptx.addSlide();
@@ -151,18 +153,20 @@ export async function exportPptx(input: ExportInput): Promise<ExportOutput> {
 
   // --- chapters
   book.chapters.forEach((ch, ci) => {
-    const title = chapterDisplayTitle(book, ch, ci);
+    const title = single ? book.title : chapterDisplayTitle(book, ch, ci);
+    if (!single) {
     const sec = pptx.addSlide();
     sec.background = { color: c1 };
     sec.addText(chapterLabel(book, ci).toUpperCase(), { x: 0.9, y: 2.3, w: W - 1.8, h: 0.6, fontFace: 'Calibri', fontSize: 16, bold: true, color: hexColor(book.cover.accentColor || '#c4b5fd'), charSpacing: 3 });
     sec.addText(title, { x: 0.9, y: 2.9, w: W - 1.8, h: 1.8, fontFace: headFace, fontSize: 40, bold: true, color: coverText, valign: 'top', fit: 'shrink' });
+    }
 
     for (const cs of paginateChapter(book, ch.blocks, title, assets)) {
       const slide = pptx.addSlide();
       slide.background = { color: paper };
       slide.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: 0.12, h: H, fill: { color: accent } });
       slide.addText(cs.title, { x: 0.7, y: 0.35, w: W - 1.4, h: 0.9, fontFace: headFace, fontSize: 28, bold: true, color: ink, fit: 'shrink' });
-      slide.addText(`${ci + 1}`, { x: W - 1.1, y: H - 0.55, w: 0.6, h: 0.35, fontSize: 11, color: '8A8A9A', align: 'right' });
+      if (!single) slide.addText(`${ci + 1}`, { x: W - 1.1, y: H - 0.55, w: 0.6, h: 0.35, fontSize: 11, color: '8A8A9A', align: 'right' });
       const top = 1.35, areaH = H - top - 0.7;
       if (cs.image) {
         const a = cs.image.asset;

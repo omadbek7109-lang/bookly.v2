@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { Block, Book, Chapter } from '../../models/book';
+import { isSingleText, type Block, type Book, type Chapter } from '../../models/book';
 import { fontById } from '../../models/templates';
 import { useAssetUrl } from '../../hooks/useAssetUrl';
 import { sanitizeInline } from '../../utils/inline';
@@ -9,9 +9,13 @@ export function ChapterContent({ book, chapter, index, style }: { book: Book; ch
   const label = book.language === 'en' ? `Chapter ${index + 1}` : book.language === 'ru' ? `Глава ${index + 1}` : `${index + 1}-bob`;
   return (
     <article className="book-content" style={{ '--accent': book.theme.accent, '--heading-font': fontById(book.theme.headingFont).css, '--body-font': fontById(book.theme.bodyFont).css, ...style } as CSSProperties}>
-      <p className="bc-label">{label}</p>
-      <h1 className="bc-title">{chapter.title || label}</h1>
-      <span className="bc-rule" />
+      {!isSingleText(book) && (
+        <>
+          <p className="bc-label">{label}</p>
+          <h1 className="bc-title">{chapter.title || label}</h1>
+          <span className="bc-rule" />
+        </>
+      )}
       {chapter.blocks.map((b) => <BlockRender key={b.id} b={b} />)}
     </article>
   );

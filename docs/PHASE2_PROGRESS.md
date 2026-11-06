@@ -50,3 +50,21 @@ FLECT STARS (`kyqzoamprcmupxvssokj`) and DAMEO (`reymdxmzfgctdhowndye`) are neve
 - The SQL tool asks for confirmation on statements containing `DELETE`; that prompt is auto-cancelled
   in this session, so migrations avoid deletes (stale chapters are hidden via `books.chapter_ids`).
 - Sandbox cannot reach *.supabase.co over HTTPS; server behaviour is tested through SQL as the real roles.
+
+## Profile & editor UX redesign (2026-11-07)
+- [x] Book layout `metadata.layout`: 'chapters' (default, all old books) | 'single' (one continuous text). No migration of old data.
+      Exporters (PDF/EPUB/DOCX/PPTX) and reader add no chapter labels/titles/TOC for single-text books. Switching
+      chapters → single merges chapters with their titles kept as headings (confirmed, nothing deleted).
+- [x] New book sheet: title + two mode cards ("Boblar bilan" / "Bitta yaxlit matn").
+- [x] Editor: toolbar B · I · U · "Qo'shish" · "AI yordamchi"; "+" menu Sarlavha / Kichik sarlavha / Oddiy matn / Iqtibos / Rasm
+      (+ "Boshqa bloklar"); block menu only on the active block; placeholder "Matningizni shu yerga yozing..."; smaller text on
+      phones; caret kept above the toolbar/keyboard; focus fixes (new/converted blocks, sheet focus return);
+      save status Saqlanmoqda / Saqlandi / Saqlashda xatolik (auto-retry + tap to retry).
+- [x] AI yordamchi: 8 tasks, answer never auto-inserted (Matnga qo'shish / Eski matnni almashtirish / Qayta urinish / Nusxalash).
+      Edge Function `ai-assist` (Anthropic API key only as secret ANTHROPIC_API_KEY; per-user daily limit via
+      `public.ai_usage` + `bookly_ai_take`, migration 20261107090000). Without the key the editor hides the AI button.
+- [x] Profile: card (photo, name, account status, edit sheet), 2 stats, language/theme/reduced motion (explained),
+      compact export defaults, "Zaxiralash" (cloud + file backup/restore + storage), delete-all needs typing O'CHIRISH,
+      About / Privacy / Help / Version. "Replay intro" removed.
+- [x] Tests: unit 30/30, e2e 24/24 (incl. new: two modes at 360px, AI hidden/demo/server, profile at 360px).
+- [ ] Owner action: add Edge Function secret ANTHROPIC_API_KEY to turn the AI yordamchi on (optional BOOKLY_AI_MODEL, BOOKLY_AI_DAILY_LIMIT).
