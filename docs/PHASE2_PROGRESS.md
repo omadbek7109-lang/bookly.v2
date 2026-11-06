@@ -23,6 +23,13 @@ FLECT STARS (`kyqzoamprcmupxvssokj`) and DAMEO (`reymdxmzfgctdhowndye`) are neve
 - [x] 9. Tests: unit 23/23 (10 cloud), e2e flows 13/13 + cloud 7/7 (360/390/430), SQL RLS 29/29. Live HTTP check `npm run test:live` in CI job `live-supabase` (needs 4 secrets).
 - [x] 10. Pushed; CI 704ddf8: unit, build, e2e, deploy to gh-pages all green; Pages serves gh-pages.
 
+## Telegram Mini App sign-in (2026-11-06)
+- [x] `profiles.telegram_id` (unique) + column-level lock (users cannot set telegram_id) — verified by SQL test.
+- [x] Edge Function `telegram-auth` (verify_jwt off; HMAC-SHA256 initData check with TELEGRAM_BOT_TOKEN secret,
+      24 h freshness, find/create user, session via one-time magic-link token redeemed server-side).
+- [x] Client: auto sign-in inside Telegram, "Telegram orqali kirish" button, launch hash cleaned, Telegram script loaded only in Telegram.
+- [x] Tests: unit verify (matches Telegram reference algorithm, rejects tampering/expired), e2e Telegram flow, CI `telegram-check`.
+
 ## Open items (owner action)
 - Supabase → Authentication → URL Configuration: Site URL + Redirect URL = https://omadbek7109-lang.github.io/bookly.v2/
 - Custom SMTP for production sign-up/reset emails (built-in mailer is rate limited).

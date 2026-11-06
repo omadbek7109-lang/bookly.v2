@@ -93,6 +93,8 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      - name: Telegram auth Edge Function is live and configured
+        run: node scripts/telegram-check.mjs
       - name: Live checks against Supabase
         env:
           BOOKLY_TEST_EMAIL_A: ${{ secrets.BOOKLY_TEST_EMAIL_A }}

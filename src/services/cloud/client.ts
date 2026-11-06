@@ -48,6 +48,9 @@ const UZ_ERRORS: Record<string, string> = {
   refresh_token_not_found: 'Sessiya tugadi. Qaytadan kiring.',
   network: 'Internet yo‘q yoki server javob bermadi. Lokal ish davom etadi.',
   signup_disabled: 'Ro‘yxatdan o‘tish hozircha yopiq.',
+  invalid_init_data: 'Telegram ma’lumotlari tasdiqlanmadi. Bookly’ni bot ichidan qayta oching.',
+  not_configured: 'Telegram orqali kirish serverda hali sozlanmagan.',
+  server_error: 'Serverda xatolik. Birozdan keyin qayta urinib ko‘ring.',
 };
 
 export function friendlyError(e: unknown): string {
@@ -169,6 +172,17 @@ export class CloudClient {
       method: 'POST', auth: false, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
     });
     const s = this.toSession(await this.json(res));
+    this.setSession(s);
+    return s;
+  }
+
+  /** Exchanges Telegram Mini App initData for a Supabase session (Edge Function `telegram-auth`). */
+  async signInWithTelegram(initData: string): Promise<Session> {
+    const res = await this.raw('/functions/v1/telegram-auth', {
+      method: 'POST', auth: false, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ initData }),
+    });
+    const body = await this.json<Record<string, unknown>>(res);
+    const s = this.toSession(body);
     this.setSession(s);
     return s;
   }

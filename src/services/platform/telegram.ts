@@ -24,6 +24,11 @@ export function telegram(): TgWebApp | null {
 }
 
 export function initTelegram(): void {
+  // Telegram's script has already read and cached the launch parameters, so the hash can be
+  // handed back to the app router (otherwise "#tgWebAppData=..." would look like an unknown page).
+  if (/tgWebApp(Data|Version|Platform)=/.test(location.hash)) {
+    history.replaceState(history.state, '', `${location.pathname}${location.search}#/`);
+  }
   const tg = telegram();
   if (!tg) return;
   try {
@@ -50,4 +55,9 @@ export function haptic(kind: 'light' | 'success' | 'error' = 'light'): void {
 export function telegramUserName(): string | null {
   const u = telegram()?.initDataUnsafe?.user;
   return u ? [u.first_name, u.last_name].filter(Boolean).join(' ') || u.username || null : null;
+}
+
+/** Signed launch data from Telegram (verified server-side by the telegram-auth Edge Function). */
+export function telegramInitData(): string | null {
+  return telegram()?.initData || null;
 }

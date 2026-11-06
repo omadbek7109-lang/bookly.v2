@@ -9,6 +9,7 @@ import type { BookSyncStatus, StatusEntry } from '../../services/cloud/sync-core
 import { formatBytes } from '../../services/export/prepare';
 import { AuthSheet } from './AuthSheet';
 import { useCloud } from './CloudContext';
+import { accountLabel } from './AccountCard';
 
 export const STATUS_LABEL: Record<BookSyncStatus, { label: string; icon: IconName; tone: string }> = {
   'local-only': { label: 'Faqat shu qurilmada', icon: 'monitor', tone: 'muted' },
@@ -101,7 +102,7 @@ export default function CloudPage() {
 
   return (
     <div className="page cloud-page">
-      <PageHeader title="Cloud zaxira" subtitle={cloud.user.email} onBack={() => back(routes.profile())}
+      <PageHeader title="Cloud zaxira" subtitle={accountLabel(cloud.user) ?? undefined} onBack={() => back(routes.profile())}
         actions={<IconButton icon="refresh" label="Holatni yangilash" onClick={() => void run('refresh', () => cloud.engine!.refreshStatus())} />} />
 
       <section className="cloud-summary glass" data-testid="cloud-summary">

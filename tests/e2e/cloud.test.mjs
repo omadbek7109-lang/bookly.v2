@@ -263,4 +263,34 @@ test('cloud screens fit 360, 390 and 430 px without horizontal scrolling', async
   }
 });
 
+test('Telegram Mini App: launch hash is cleaned, user is signed in automatically and can back up', async () => {
+  const fake = createFakeSupabase();
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, colorScheme: 'dark' });
+  const tgUser = JSON.stringify({ id: 777001, first_name: 'Malika', username: 'malika_uz' });
+  const initData = new URLSearchParams({ user: tgUser, auth_date: String(Math.floor(Date.now() / 1000)), hash: 'test-valid-hash' }).toString();
+  // Stand-in for https://telegram.org/js/telegram-web-app.js
+  await ctx.route('https://telegram.org/**', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', headers: CORS,
+    body: `window.Telegram={WebApp:{initData:${JSON.stringify(initData)},initDataUnsafe:{user:${tgUser}},ready(){},expand(){},disableVerticalSwipes(){},setHeaderColor(){},setBackgroundColor(){},HapticFeedback:{impactOccurred(){},notificationOccurred(){}}}};` }));
+  await ctx.route(`${SUPA}/**`, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
+    const r = await fake.handle(req.method(), req.url(), req.headers(), req.postDataBuffer());
+    await route.fulfill({ status: r.status, headers: { ...CORS, ...r.headers }, body: r.body });
+  });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await page.goto(`${origin}${SITE_BASE}?noIntro=1#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=android`);
+  await page.waitForSelector('.home .hero');
+  assert.ok(!page.url().includes('tgWebAppData'), `launch params removed from the URL: ${page.url()}`);
+  await page.waitForSelector('[data-testid=prompt-backup]', { timeout: 10000 });
+  assert.ok(fake.log.includes('POST /functions/v1/telegram-auth'), 'telegram-auth called');
+  await page.click('[data-testid=prompt-backup]');
+  await go(page, '#/profile');
+  await page.waitForSelector('[data-testid=account-email]');
+  assert.equal(await page.locator('[data-testid=account-email]').innerText(), 'Telegram: Malika');
+  assert.match(await page.locator('.profile-card').innerText(), /Telegram: Malika/);
+  await page.screenshot({ path: path.join(OUT, 'cloud-telegram.png') });
+  await ctx.close();
+});
+
 test('no uncaught page errors', () => { assert.deepEqual(pageErrors, []); });

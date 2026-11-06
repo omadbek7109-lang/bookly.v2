@@ -97,6 +97,16 @@ export function createFakeSupabase({ requireConfirmation = false } = {}) {
       if (!id) return json(400, { error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token' });
       return json(200, issue([...users.values()].find((x) => x.id === id)));
     }
+    if (path === '/functions/v1/telegram-auth') {
+      // Real function verifies the HMAC with the bot token; the fake accepts a test hash.
+      const p = new URLSearchParams(data().initData || '');
+      if (p.get('hash') !== 'test-valid-hash') return json(401, { error: 'invalid_init_data', reason: 'bad_signature' });
+      const tg = JSON.parse(p.get('user') || 'null');
+      const email = `tg${tg.id}@telegram.bookly.invalid`;
+      let user = users.get(email);
+      if (!user) { user = { id: nextId('u'), email, password: null, confirmed: true, meta: { display_name: [tg.first_name, tg.last_name].filter(Boolean).join(' '), telegram_id: tg.id } }; users.set(email, user); }
+      return json(200, issue(user));
+    }
     if (path === '/auth/v1/logout') { tokens.delete((headers.authorization || '').replace(/^Bearer /, '')); return { status: 204, headers: {}, body: '' }; }
     if (path === '/auth/v1/recover') return json(200, {});
     const uid = userOf(headers);

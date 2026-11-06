@@ -19,6 +19,14 @@
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
       } catch (e) { document.documentElement.dataset.theme = 'dark'; }
     </script>
+    <script>
+      // Telegram Mini App API: loaded only when Telegram launched us (it passes #tgWebAppData=...).
+      var tgLaunch = /tgWebApp(Data|Version|Platform)=/.test(location.hash + location.search);
+      try { tgLaunch = tgLaunch || !!sessionStorage.getItem('__telegram__initParams'); } catch (e) {}
+      if (tgLaunch) {
+        document.write('<script src="https://telegram.org/js/telegram-web-app.js?59"><\/script>');
+      }
+    </script>
     <!-- BOOKLY:ASSETS -->
   </head>
   <body>

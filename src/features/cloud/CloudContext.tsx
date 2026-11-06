@@ -5,6 +5,7 @@ import { cloudConfigured, SUPABASE_KEY, SUPABASE_URL } from '../../services/clou
 import { deviceIdentity, SyncEngine, type EngineSnapshot, type SyncReport, type SyncState } from '../../services/cloud/sync';
 import { idbGet, idbPut } from '../../services/storage/db';
 import { assets, books, repoEvents } from '../../services/storage/repository';
+import { telegramInitData } from '../../services/platform/telegram';
 
 interface CloudCtx {
   available: boolean;
@@ -15,6 +16,10 @@ interface CloudCtx {
   recovery: boolean;
   clearRecovery: () => void;
   signIn: (email: string, password: string) => Promise<void>;
+  /** True inside the Telegram Mini App, where sign-in needs no password. */
+  inTelegram: boolean;
+  signInWithTelegram: () => Promise<void>;
+  telegramBusy: boolean;
   signUp: (email: string, password: string, name: string) => Promise<{ needsConfirmation: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -73,6 +78,20 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     return () => { offSession(); offEngine(); };
   }, [svc]);
 
+  // Inside Telegram: sign in automatically with the signed launch data (no password).
+  const [telegramBusy, setTelegramBusy] = useState(false);
+  const signInWithTelegram = useCallback(async () => {
+    const initData = telegramInitData();
+    if (!svc || !initData) return;
+    setTelegramBusy(true);
+    try { await svc.client.signInWithTelegram(initData); }
+    finally { setTelegramBusy(false); }
+  }, [svc]);
+  useEffect(() => {
+    if (!svc || svc.client.user || !telegramInitData()) return;
+    signInWithTelegram().catch((e) => toast(friendlyError(e), 'error'));
+  }, [svc, signInWithTelegram, toast]);
+
   // Links from Supabase emails land on #access_token=...&type=recovery|signup
   useEffect(() => {
     if (!svc || !/access_token=|error_description=/.test(location.hash)) return;
@@ -128,6 +147,9 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     user, snapshot, online, recovery,
     clearRecovery: () => setRecovery(false),
     signIn: async (email, password) => { await svc!.client.signIn(email.trim(), password); },
+    inTelegram: !!telegramInitData(),
+    signInWithTelegram,
+    telegramBusy,
     signUp: (email, password, name) => svc!.client.signUp(email.trim(), password, name.trim(), authRedirectUrl()),
     signOut: async () => { await svc!.client.signOut(); svc!.engine.reset(); },
     resetPassword: (email) => svc!.client.requestPasswordReset(email.trim(), authRedirectUrl()),
@@ -136,7 +158,7 @@ export function CloudProvider({ children }: { children: ReactNode }) {
     engine: svc?.engine ?? null,
     backupPrompt,
     answerBackupPrompt,
-  }), [svc, user, snapshot, online, recovery, sync, backupPrompt, answerBackupPrompt]);
+  }), [svc, user, snapshot, online, recovery, sync, backupPrompt, answerBackupPrompt, signInWithTelegram, telegramBusy]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

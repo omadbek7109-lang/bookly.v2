@@ -381,7 +381,8 @@ test('GitHub Pages layout: base path, assets, deep links, 404 fallback and mobil
   // 1) the built HTML references only relative asset URLs that resolve under the base path
   const html = fs.readFileSync(path.join(ROOT, 'dist/index.html'), 'utf8');
   assert.match(html, /<div id="root"><\/div>/, 'index.html is the app shell, not a README');
-  const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
+  // The Telegram Mini App script is the one intended external file (loaded only inside Telegram).
+  const refs = [...html.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]).filter((r) => !r.startsWith('https://telegram.org/'));
   assert.ok(refs.some((r) => /assets\/app-[\w]+\.js$/.test(r)), 'hashed app bundle referenced');
   for (const r of refs) {
     assert.ok(r.startsWith('./'), `asset URL must be relative to ${SITE_BASE}: ${r}`);
