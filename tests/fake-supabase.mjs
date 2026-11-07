@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 // In-memory stand-in for the parts of Supabase Bookly uses (Auth, PostgREST tables/RPCs, Storage).
 // Semantics mirror supabase/migrations/*.sql: per-user isolation, revision-based conflicts on
 // bookly_push_book, chapter order via chapter_ids, storage folders per user. The real server's
@@ -7,8 +8,8 @@
 let seq = 0;
 const nextId = (p) => `${p}-${(++seq).toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`.slice(0, 36);
 
-export function createFakeSupabase({ requireConfirmation = false, aiConfigured = false } = {}) {
-  const opts = { aiConfigured };
+export function createFakeSupabase({ requireConfirmation = false, aiConfigured = false, wipeTtlMs } = {}) {
+  const opts = { aiConfigured, wipeTtlMs };
   const users = new Map(); // email -> {id,email,password,confirmed,meta}
   const tokens = new Map(); // access token -> userId
   const refreshTokens = new Map();
@@ -16,6 +17,7 @@ export function createFakeSupabase({ requireConfirmation = false, aiConfigured =
   const log = [];
   const sentFiles = [];
   const aiCalls = [];
+  const wipeRequests = [];
   let online = true;
 
   const json = (status, body) => ({ status, headers: { 'content-type': 'application/json' }, body: body === undefined ? '' : JSON.stringify(body) });
@@ -109,6 +111,35 @@ export function createFakeSupabase({ requireConfirmation = false, aiConfigured =
       let user = users.get(email);
       if (!user) { user = { id: nextId('u'), email, password: null, confirmed: true, meta: { display_name: [tg.first_name, tg.last_name].filter(Boolean).join(' '), telegram_id: tg.id } }; users.set(email, user); }
       return json(200, issue(user));
+    }
+    if (path === '/functions/v1/wipe-books') {
+      // Mirrors supabase/functions/wipe-books + bookly_wipe_start/confirm (5 min, 5 attempts, single use).
+      const uid = userOf(headers);
+      if (!uid) return json(401, { error: 'needs_login' });
+      const d = data();
+      if (d.action === 'start') {
+        for (const r of wipeRequests) if (r.user_id === uid && r.status === 'pending') r.status = 'superseded';
+        const r = { id: crypto.randomUUID(), user_id: uid, code: String(crypto.randomInt(0, 10000)).padStart(4, '0'), attempts: 0, status: 'pending', expires: Date.now() + (opts.wipeTtlMs ?? 300000) };
+        wipeRequests.push(r);
+        return json(200, { request_id: r.id, code: r.code, expires_at: new Date(r.expires).toISOString() });
+      }
+      if (d.action === 'confirm') {
+        const r = wipeRequests.find((x) => x.id === d.request_id && x.user_id === uid);
+        if (!r) return json(409, { status: 'invalid' });
+        if (r.status !== 'pending') return json(409, { status: r.status === 'locked' ? 'locked' : 'invalid' });
+        if (Date.now() > r.expires) { r.status = 'expired'; return json(409, { status: 'expired' }); }
+        if (r.code !== String(d.code)) {
+          r.attempts++;
+          if (r.attempts >= 5) { r.status = 'locked'; return json(409, { status: 'locked', attempts_left: 0 }); }
+          return json(422, { status: 'wrong', attempts_left: 5 - r.attempts });
+        }
+        r.status = 'used';
+        const del = (arr) => { let n = 0; for (let i = arr.length - 1; i >= 0; i--) if (arr[i].user_id === uid) { arr.splice(i, 1); n++; } return n; };
+        const nChapters = del(chapters); del(assets); const nBooks = del(books);
+        let removed = 0; for (const k of [...objects.keys()]) if (k.startsWith(`${uid}/`)) { objects.delete(k); removed++; }
+        return json(200, { status: 'ok', books: nBooks, chapters: nChapters, files_removed: removed, files_failed: 0 });
+      }
+      return json(400, { error: 'bad_request' });
     }
     if (path === '/functions/v1/ai-assist') {
       if (method === 'GET') return json(200, { configured: !!opts.aiConfigured });
@@ -227,7 +258,7 @@ export function createFakeSupabase({ requireConfirmation = false, aiConfigured =
   }
 
   return {
-    handle, fetch: fakeFetch, log, sentFiles, aiCalls,
+    handle, fetch: fakeFetch, log, sentFiles, aiCalls, wipeRequests, setWipeTtl: (ms) => { opts.wipeTtlMs = ms; },
     setOnline(v) { online = v; },
     confirm(email) { const u = users.get(email); if (u) u.confirmed = true; },
     state: { users, books, chapters, assets, objects, sync },

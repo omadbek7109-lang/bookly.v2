@@ -486,8 +486,8 @@ test('templates: preview and create a book from a template', async () => {
 test('responsive layouts have no horizontal overflow (320 → desktop)', async () => {
   for (const [w, h] of [[320, 640], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
     const { ctx, page } = await newPage({ width: w, height: h });
-    await createAiBook(page, 'Responsive sinov', 3);
-    for (const hash of ['#/', '#/books', '#/studio', '#/templates', '#/profile', '#/export', '#/create', '#/import']) {
+    await createAiBook(page, 'Juda uzun nomli responsive sinov kitobi: boshidan oxirigacha', 3);
+    for (const hash of ['#/', '#/books', '#/studio', '#/templates', '#/profile', '#/export', '#/create', '#/import', '#/about']) {
       await go(page, hash);
       await page.waitForTimeout(250);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
@@ -502,6 +502,185 @@ test('responsive layouts have no horizontal overflow (320 → desktop)', async (
     }
     await ctx.close();
   }
+});
+
+test('custom dropdowns: library sort and category (bottom sheet on phones, popover on desktop, keyboard)', async () => {
+  for (const [w, h] of [[360, 740], [390, 844], [430, 932], [1280, 800]]) {
+    const { ctx, page } = await newPage({ width: w, height: h });
+    await createAiBook(page, 'Saralash sinovi', 3);
+    await go(page, '#/books');
+    await page.waitForSelector('[data-testid=book-row]');
+    assert.equal(await page.locator('select').count(), 0, 'no native <select> left');
+    for (const v of ['created', 'updated', 'words', 'title']) {
+      await page.click('[data-testid=library-sort]');
+      await page.waitForSelector(`[data-testid=library-sort-opt-${v}]`);
+      if (w < 600) {
+        await page.waitForTimeout(400); // let the slide-up animation finish
+        const sheet = await page.locator('.sheet').last().boundingBox();
+        assert.ok(sheet && sheet.height < h * 0.85, `sheet must not cover the whole screen (${sheet?.height} of ${h})`);
+        assert.ok(sheet.y + sheet.height <= h + 1 && sheet.x >= -1 && sheet.x + sheet.width <= w + 1, `sheet inside viewport: ${JSON.stringify(sheet)}`);
+      } else {
+        assert.equal(await page.locator('.select-popover').count(), 1, 'desktop uses a popover');
+      }
+      await page.click(`[data-testid=library-sort-opt-${v}]`);
+      await page.waitForFunction((val) => document.querySelector('[data-testid=library-sort]')?.getAttribute('data-value') === val, v);
+      await page.waitForFunction(() => !document.querySelector('.select-popover') && !document.querySelector('.select-sheet'));
+    }
+    const cats = await (async () => {
+      await page.click('[data-testid=library-category]');
+      await page.waitForSelector('[data-testid^=library-category-opt-]');
+      const ids = await page.$$eval('[data-testid^=library-category-opt-]', (els) => els.map((e) => e.getAttribute('data-testid').replace('library-category-opt-', '')));
+      const checked = await page.$$eval('[role=option][aria-selected=true]', (els) => els.length);
+      assert.equal(checked, 1, 'exactly one option is marked selected');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.select-popover') && !document.querySelector('.select-sheet'));
+      return ids;
+    })();
+    assert.ok(cats.includes('all') && cats.length >= 8, `categories: ${cats.join(',')}`);
+    for (const c of cats) {
+      await page.click('[data-testid=library-category]');
+      await page.click(`[data-testid=library-category-opt-${c}]`);
+      await page.waitForFunction((val) => document.querySelector('[data-testid=library-category]')?.getAttribute('data-value') === val, c);
+    }
+    // keyboard: open with Enter, move with arrows, pick with Enter
+    await page.click('[data-testid=library-category]');
+    await page.click('[data-testid=library-category-opt-all]');
+    await page.waitForFunction(() => !document.querySelector('.select-popover') && !document.querySelector('.select-sheet'));
+    assert.equal(await page.getAttribute('[data-testid=library-sort]', 'data-value'), 'title');
+    await page.focus('[data-testid=library-sort]');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('[role=listbox]');
+    await page.waitForFunction(() => document.activeElement?.getAttribute('role') === 'option', null, { timeout: 3000 });
+    await page.keyboard.press('Home');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-testid=library-sort]')?.getAttribute('data-value') === 'updated');
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    const culprit = overflow > 1 ? await page.evaluate(() => [...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > innerWidth + 1).slice(0, 4).map((e) => `${e.tagName}.${e.className}`).join(' | ')) : '';
+    if (overflow > 1) await page.screenshot({ path: path.join(OUT, `select-overflow-${w}.png`) });
+    assert.ok(overflow <= 1, `library overflows by ${overflow}px at ${w}px: ${culprit}`);
+    if (w === 360 || w === 1280) {
+      await page.click('[data-testid=library-sort]');
+      await page.waitForSelector('[data-testid=library-sort-opt-title]');
+      await page.waitForTimeout(350);
+      await page.screenshot({ path: path.join(OUT, `select-${w}.png`) });
+      await page.keyboard.press('Escape');
+    }
+    await ctx.close();
+  }
+});
+
+test('About page: opens from profile, shows real feature status in every language', async () => {
+  const { ctx, page } = await newPage({ width: 360, height: 740 });
+  await go(page, '#/profile');
+  await page.click('[data-testid=profile-about]');
+  await page.waitForSelector('[data-testid=about-page]');
+  const text = await page.textContent('[data-testid=about-page]');
+  for (const s of ['Bizning maqsadimiz', 'Bookly imkoniyatlari', 'Bizning yondashuvimiz', 'Bizning qarashimiz', 'Biz bilan birga yarating', 'Bookly — Your Story, Your Creation.', 'PDF, EPUB, DOCX va PPTX']) assert.ok(text.includes(s), `missing: ${s}`);
+  const status = await page.$$eval('[data-testid=about-features] li', (els) => Object.fromEntries(els.map((e) => [e.querySelector('strong').textContent, e.getAttribute('data-status')])));
+  assert.equal(status['AI Book Creation'], 'demo', 'AI creation is labelled as demo');
+  assert.equal(status['AI yordamchi'], 'needsSetup', 'AI assistant is labelled as not connected');
+  assert.ok(Object.values(status).filter((v) => v === 'available').length >= 7);
+  await page.screenshot({ path: path.join(OUT, 'about-360.png'), fullPage: true });
+  for (const [loc, heading] of [['ru', 'Наша цель'], ['en', 'Our mission']]) {
+    await page.evaluate((l) => { const s = JSON.parse(localStorage.getItem('bookly.settings') || '{}'); s.locale = l; localStorage.setItem('bookly.settings', JSON.stringify(s)); }, loc);
+    await page.reload();
+    await page.waitForSelector('[data-testid=about-page]');
+    assert.ok((await page.textContent('[data-testid=about-page]')).includes(heading), `${loc} heading`);
+  }
+  await page.click('[data-testid=about-start]');
+  await page.waitForSelector('.home');
+  await ctx.close();
+});
+
+/** Watches one input: counts blur/focus events and whether React replaced the DOM node. */
+async function watchInput(page, sel) {
+  await page.locator(sel).evaluate((el) => {
+    window.__watch = { blur: 0, focus: 0, node: el };
+    el.addEventListener('blur', () => window.__watch.blur++);
+    el.addEventListener('focus', () => window.__watch.focus++);
+  });
+}
+const watchState = (page, sel) => page.evaluate((s) => ({ blur: window.__watch.blur, sameNode: document.querySelector(s) === window.__watch.node, focused: document.activeElement === window.__watch.node, bodyLocked: document.body.classList.contains('no-scroll') }), sel);
+
+test('dialog inputs keep focus while typing (no keyboard close/reopen): rename prompt and delete-code input', async () => {
+  const { ctx, page } = await newPage({ width: 360, height: 640 });
+  await createAiBook(page, 'Klaviatura sinovi', 3);
+  await go(page, '#/books');
+  await page.locator('[data-testid=row-menu]').first().click();
+  await page.click('[data-testid=menu-rename]');
+  const sel = '.sheet input.input';
+  await page.waitForSelector(sel);
+  await page.waitForTimeout(80);
+  await watchInput(page, sel);
+  await page.locator(sel).press('Control+A');
+  for (const ch of 'Yangi nom 2026') {
+    await page.keyboard.type(ch);
+    const st = await watchState(page, sel);
+    assert.ok(st.sameNode && st.focused && st.blur === 0 && st.bodyLocked, `stable after "${ch}": ${JSON.stringify(st)}`);
+  }
+  for (let i = 0; i < 5; i++) await page.keyboard.press('Backspace');
+  await page.evaluate(() => document.execCommand('insertText', false, ' (paste)'));
+  const st = await watchState(page, sel);
+  assert.ok(st.sameNode && st.focused && st.blur === 0, `stable after delete + paste: ${JSON.stringify(st)}`);
+  assert.equal(await page.locator(sel).inputValue(), 'Yangi nom (paste)');
+  await page.keyboard.press('Escape');
+  await ctx.close();
+});
+
+test('delete all books without an account: random 4-digit code, wrong code keeps data, right code deletes books only', async () => {
+  const { ctx, page } = await newPage({ width: 360, height: 640 });
+  await createAiBook(page, 'O‘chiriladigan kitob', 3);
+  // a book with an image, a profile name, avatar and theme that must survive
+  await go(page, '#/profile');
+  await page.click('[data-testid=profile-edit]');
+  await page.fill('[data-testid=profile-name]', 'Saqlanuvchi ism');
+  await page.click('[data-testid=profile-done]');
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkaPhfDwAEhgGAWpBnOQAAAABJRU5ErkJggg==', 'base64');
+  await page.setInputFiles('.profile-card input[type=file]', { name: 'a.png', mimeType: 'image/png', buffer: png });
+  await page.waitForSelector('.profile-card .avatar img');
+  await page.click('text=Yorug‘');
+  const codes = new Set();
+  for (let i = 0; i < 3; i++) {
+    await page.click('[data-testid=clear-all]');
+    await page.waitForSelector('[data-testid=wipe-sheet][data-mode=local] [data-testid=wipe-input]');
+    codes.add((await page.locator('[data-testid=wipe-code]').innerText()).replace(/\D/g, ''));
+    if (i < 2) { await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('[data-testid=wipe-sheet]')); }
+  }
+  for (const c of codes) assert.match(c, /^\d{4}$/);
+  assert.ok(codes.size >= 2, `codes are random per session: ${[...codes]}`);
+  const code = (await page.locator('[data-testid=wipe-code]').innerText()).replace(/\D/g, '');
+  // typing digit by digit keeps focus (the Android Telegram bug)
+  await page.waitForTimeout(80);
+  await watchInput(page, '[data-testid=wipe-input]');
+  const wrong = code === '9999' ? '1111' : '9999';
+  for (const d of wrong) {
+    await page.keyboard.type(d);
+    const st = await watchState(page, '[data-testid=wipe-input]');
+    assert.ok(st.sameNode && st.focused && st.blur === 0, `code input stable: ${JSON.stringify(st)}`);
+  }
+  await page.click('[data-testid=wipe-confirm]');
+  await page.waitForSelector('[data-testid=wipe-message]');
+  await go(page, '#/books');
+  await page.waitForTimeout(300);
+  // the sheet closed on navigation? if not, books must still be there
+  const before = await page.evaluate(async () => (await new Promise((res) => { const r = indexedDB.open('bookly'); r.onsuccess = () => { const q = r.result.transaction('books').objectStore('books').count(); q.onsuccess = () => res(q.result); }; })));
+  assert.equal(before, 1, 'wrong code deleted nothing');
+  await go(page, '#/profile');
+  await page.click('[data-testid=clear-all]');
+  await page.waitForSelector('[data-testid=wipe-input]');
+  const code2 = (await page.locator('[data-testid=wipe-code]').innerText()).replace(/\D/g, '');
+  await page.fill('[data-testid=wipe-input]', code2);
+  await page.screenshot({ path: path.join(OUT, 'wipe-local-360.png') });
+  await page.click('[data-testid=wipe-confirm]');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=wipe-sheet]'));
+  const after = await page.evaluate(async () => (await new Promise((res) => { const r = indexedDB.open('bookly'); r.onsuccess = () => { const tx = r.result.transaction(['books', 'assets']); const b = tx.objectStore('books').count(); const a = tx.objectStore('assets').count(); tx.oncomplete = () => res({ books: b.result, assets: a.result }); }; })));
+  assert.deepEqual(after, { books: 0, assets: 1 }, 'books and book files gone, only the avatar remains');
+  await page.reload();
+  await page.waitForSelector('.page.profile');
+  assert.equal(await page.locator('[data-testid=profile-display-name]').innerText(), 'Saqlanuvchi ism', 'profile kept');
+  assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light', 'settings kept');
+  assert.equal(await page.locator('.profile-card .avatar img').count(), 1, 'avatar kept');
+  await ctx.close();
 });
 
 test('profile settings: theme, name and backup', async () => {
@@ -529,11 +708,12 @@ test('profile settings: theme, name and backup', async () => {
   await page.click('[data-testid=export-defaults]');
   await page.click('.disclosure-body .segmented button:has-text("A4")');
   assert.match(await page.locator('[data-testid=export-defaults]').innerText(), /A4/);
-  // E. deleting everything needs the confirmation word — a wrong word deletes nothing
+  // E. deleting books needs the 4-digit code — a wrong code deletes nothing
   await page.click('[data-testid=clear-all]');
-  await page.fill('.sheet input', 'ha');
-  await page.click('[data-testid=dialog-confirm]');
-  await page.waitForTimeout(300);
+  await page.waitForSelector('[data-testid=wipe-input]');
+  await page.fill('[data-testid=wipe-input]', '12');
+  assert.equal(await page.locator('[data-testid=wipe-confirm]').isDisabled(), true);
+  await page.keyboard.press('Escape');
   assert.equal(await page.locator('[data-testid=profile-display-name]').innerText(), 'Muhayyo', 'nothing deleted');
   await page.screenshot({ path: path.join(OUT, 'profile-360.png'), fullPage: true });
   await go(page, '#/');

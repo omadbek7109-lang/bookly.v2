@@ -206,6 +206,12 @@ export class SyncEngine {
     await this.refreshStatus();
   }
 
+  /** After all books were deleted (server + this device): forget per-book sync records and the cloud listing. */
+  async resetAfterWipe(): Promise<void> {
+    if (this.state) { this.state.records = {}; this.state.remoteCache = []; await this.persist(); }
+    await this.refreshStatus();
+  }
+
   /** Removes the cloud copy only; the book stays on this device. */
   async removeFromCloud(localId: string): Promise<void> {
     await this.client.remove('books', `local_id=eq.${encodeURIComponent(localId)}`);

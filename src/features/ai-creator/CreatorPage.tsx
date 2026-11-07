@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes } from '../../app/router';
 import { Icon } from '../../components/Icon';
-import { Button, DemoBadge, Field, IconButton, PageHeader, ProgressBar } from '../../components/ui';
+import { Button, DemoBadge, Field, IconButton, PageHeader, ProgressBar, Select } from '../../components/ui';
 import { createBook, createChapter, defaultCover, blockText, type Block, type BookCategory, type BookLanguage, type WritingTone } from '../../models/book';
 import { templateById, TEMPLATES } from '../../models/templates';
 import type { MessageKey } from '../../i18n';
@@ -147,14 +147,12 @@ export default function CreatorPage() {
           </Field>
           <div className="form-row">
             <Field label={t('creator.language')} htmlFor="c-lang">
-              <select id="c-lang" className="input" value={brief.language} onChange={(e) => set('language', e.target.value as BookLanguage)}>
-                {LANGS.map((l) => <option key={l} value={l}>{t(`lang.${l}` as MessageKey)}</option>)}
-              </select>
+              <Select id="c-lang" label={t('creator.language')} value={brief.language} onChange={(v) => set('language', v as BookLanguage)} testId="creator-language"
+                options={LANGS.map((l) => ({ value: l, label: t(`lang.${l}` as MessageKey) }))} />
             </Field>
             <Field label={t('creator.category')} htmlFor="c-cat">
-              <select id="c-cat" className="input" value={brief.category} onChange={(e) => set('category', e.target.value as BookCategory)} data-testid="creator-category">
-                {CATS.map((c) => <option key={c} value={c}>{t(`category.${c}` as MessageKey)}</option>)}
-              </select>
+              <Select id="c-cat" label={t('creator.category')} value={brief.category} onChange={(v) => set('category', v as BookCategory)} testId="creator-category"
+                options={CATS.map((c) => ({ value: c, label: t(`category.${c}` as MessageKey) }))} />
             </Field>
           </div>
           <Field label={t('creator.audience')} htmlFor="c-aud">

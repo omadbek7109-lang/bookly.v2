@@ -59,4 +59,5 @@ export const routes = {
   export: (id?: string) => (id ? `/export/${id}` : '/export'),
   import: () => '/import',
   cloud: () => '/cloud',
+  about: () => '/about',
 };

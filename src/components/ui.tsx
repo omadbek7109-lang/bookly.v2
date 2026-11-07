@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useT, useUi } from '../app/AppContext';
 import { Icon, type IconName } from './Icon';
@@ -46,11 +46,17 @@ export function Sheet({ open, onClose, title, children, footer, size = 'md', lab
   const id = useId();
   const [visible, setVisible] = useState(open);
   useEffect(() => { if (open) setVisible(true); }, [open]);
+  // Callers usually pass an inline `onClose`, which is a new function on every render. The open/close effect
+  // below must NOT depend on it: otherwise every re-render of the sheet (e.g. each keystroke in an input)
+  // re-ran the effect — the cleanup moved focus back to the opener and toggled body scrolling, the setup
+  // re-focused the input 30 ms later — which closed and reopened the Android keyboard after each character.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   useEffect(() => {
     if (!open) return;
     const prev = document.activeElement as HTMLElement | null;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { e.stopPropagation(); onClose(); }
+      if (e.key === 'Escape') { e.stopPropagation(); onCloseRef.current(); }
       if (e.key === 'Tab' && ref.current) {
         const els = Array.from(ref.current.querySelectorAll<HTMLElement>(focusableSel));
         if (!els.length) return;
@@ -74,7 +80,7 @@ export function Sheet({ open, onClose, title, children, footer, size = 'md', lab
       const a = document.activeElement;
       if (!a || a === document.body || ref.current?.contains(a)) prev?.focus?.({ preventScroll: true });
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!visible) return null;
   return createPortal(
     <div className={`sheet-root ${open ? 'is-open' : 'is-closing'}`} onAnimationEnd={() => { if (!open) setVisible(false); }}>
@@ -189,6 +195,109 @@ export function Segmented<T extends string>({ value, options, onChange, label, s
         </button>
       ))}
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ Select (Bookly design, no native picker)
+
+export interface SelectOption<T extends string> { value: T; label: string; icon?: IconName; hint?: string }
+
+/**
+ * Replaces native <select> (which shows grey system dialogs on Android/Telegram). On phones it opens a compact
+ * bottom sheet sized to its options; on wider screens a popover anchored to the trigger. Full keyboard support:
+ * ↑/↓/Home/End move, Enter/Space choose, Esc closes, typing a letter jumps to the matching option.
+ */
+export function Select<T extends string>({ value, options, onChange, label, icon, disabled, id, testId, variant = 'field' }: {
+  value: T; options: SelectOption<T>[]; onChange: (v: T) => void; label: string; icon?: IconName; disabled?: boolean; id?: string; testId?: string; variant?: 'field' | 'chip';
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [pos, setPos] = useState<{ left: number; top: number; width: number; maxH: number; up: boolean } | null>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const listId = useId();
+  const current = options.find((o) => o.value === value) ?? options[0];
+  const narrow = typeof window !== 'undefined' && window.matchMedia?.('(max-width: 599px)').matches;
+
+  const openMenu = () => {
+    if (disabled) return;
+    setActive(Math.max(0, options.findIndex((o) => o.value === value)));
+    if (!narrow && trigger.current) {
+      const r = trigger.current.getBoundingClientRect();
+      const below = window.innerHeight - r.bottom - 12, above = r.top - 12;
+      const up = below < 220 && above > below;
+      setPos({ left: Math.min(r.left, window.innerWidth - Math.max(r.width, 240) - 8), top: up ? r.top - 6 : r.bottom + 6, width: Math.max(r.width, 240), maxH: Math.min(360, up ? above : below), up });
+    }
+    setOpen(true);
+  };
+  const close = (refocus = true) => { setOpen(false); if (refocus) setTimeout(() => trigger.current?.focus({ preventScroll: true }), 0); };
+  const choose = (v: T) => { if (v !== value) onChange(v); close(); };
+
+  useEffect(() => {
+    if (!open) return;
+    const t = setTimeout(() => list.current?.querySelector<HTMLElement>(`[data-index="${active}"]`)?.focus({ preventScroll: false }), 30);
+    return () => clearTimeout(t);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!open || narrow) return;
+    const onDown = (e: PointerEvent) => { if (!list.current?.contains(e.target as Node) && !trigger.current?.contains(e.target as Node)) close(false); };
+    const onScroll = () => close(false);
+    // Esc closes the popover even before focus has moved into the list.
+    const onEsc = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('keydown', onEsc, true);
+    window.addEventListener('resize', onScroll);
+    return () => { document.removeEventListener('pointerdown', onDown, true); document.removeEventListener('keydown', onEsc, true); window.removeEventListener('resize', onScroll); };
+  }, [open, narrow]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const onListKey = (e: ReactKeyboardEvent) => {
+    const move = (i: number) => { e.preventDefault(); const n = (i + options.length) % options.length; setActive(n); list.current?.querySelector<HTMLElement>(`[data-index="${n}"]`)?.focus(); };
+    if (e.key === 'ArrowDown') move(active + 1);
+    else if (e.key === 'ArrowUp') move(active - 1);
+    else if (e.key === 'Home') move(0);
+    else if (e.key === 'End') move(options.length - 1);
+    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); }
+    else if (e.key === 'Tab') close(false);
+    else if (e.key.length === 1 && /\S/.test(e.key)) {
+      const k = e.key.toLocaleLowerCase();
+      const i = options.findIndex((o, j) => j > active && o.label.toLocaleLowerCase().startsWith(k));
+      const j = i >= 0 ? i : options.findIndex((o) => o.label.toLocaleLowerCase().startsWith(k));
+      if (j >= 0) move(j);
+    }
+  };
+
+  const listbox = (
+    <div ref={list} id={listId} role="listbox" aria-label={label} className="select-list" onKeyDown={onListKey} data-testid={testId ? `${testId}-list` : undefined}>
+      {options.map((o, i) => (
+        <button key={o.value} type="button" role="option" aria-selected={o.value === value} data-index={i} tabIndex={i === active ? 0 : -1}
+          className={`select-option ${o.value === value ? 'is-selected' : ''}`} onClick={() => choose(o.value)} onFocus={() => setActive(i)}
+          data-testid={testId ? `${testId}-opt-${o.value}` : undefined}>
+          {o.icon && <Icon name={o.icon} size={18} />}
+          <span className="select-option-text"><span>{o.label}</span>{o.hint && <small>{o.hint}</small>}</span>
+          <span className="radio-dot" aria-hidden="true" />
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <>
+      <button ref={trigger} id={id} type="button" className={`select-trigger is-${variant}`} disabled={disabled}
+        aria-haspopup="listbox" aria-expanded={open} aria-controls={open ? listId : undefined} aria-label={variant === 'chip' ? `${label}: ${current?.label ?? ''}` : undefined}
+        onClick={() => (open ? close() : openMenu())}
+        onKeyDown={(e) => { if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); openMenu(); } }}
+        data-testid={testId} data-value={value}>
+        {icon && <Icon name={icon} size={16} />}
+        <span className="select-value">{current?.label}</span>
+        <Icon name="chevronDown" size={16} className="select-chevron" />
+      </button>
+      {narrow
+        ? <Sheet open={open} onClose={() => close()} title={label} size="sm"><div className="select-sheet">{listbox}</div></Sheet>
+        : open && pos && createPortal(
+          <div className={`select-popover ${pos.up ? 'is-up' : ''}`} style={{ left: pos.left, top: pos.top, width: pos.width, maxHeight: pos.maxH }}>{listbox}</div>,
+          document.body,
+        )}
+    </>
   );
 }
 

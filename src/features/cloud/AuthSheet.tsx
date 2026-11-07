@@ -114,7 +114,11 @@ export function BackupPromptSheet() {
   const [busy, setBusy] = useState(false);
   const localCount = cloud.snapshot.entries.filter((e) => e.status === 'local-only').length;
   const cloudCount = cloud.snapshot.entries.filter((e) => e.status === 'cloud-only').length;
-  const open = cloud.backupPrompt && cloud.snapshot.phase !== 'signed-out';
+  // Only ask when there is something to back up or restore (an empty "0 books" question is just noise).
+  const nothingToMove = cloud.snapshot.phase === 'idle' && localCount === 0 && cloudCount === 0;
+  const open = cloud.backupPrompt && cloud.snapshot.phase !== 'signed-out' && !nothingToMove;
+  // A new account on an empty device: nothing to ask about — just turn on automatic backup quietly.
+  useEffect(() => { if (cloud.backupPrompt && nothingToMove) void cloud.answerBackupPrompt(true); }, [cloud.backupPrompt, nothingToMove]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <Sheet open={open} onClose={() => void cloud.answerBackupPrompt(false)} title={t('backup.promptTitle')} size="sm"
       footer={<>

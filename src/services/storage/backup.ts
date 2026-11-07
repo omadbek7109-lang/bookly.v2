@@ -45,6 +45,20 @@ export async function restoreBackup(file: Blob): Promise<number> {
   return n;
 }
 
+/**
+ * "Delete all books" on this device: every book plus the images/audio stored for books.
+ * Kept: settings, profile (and its avatar image), sync device id. Returns how many books were removed.
+ */
+export async function wipeLocalBooks(keepAssetIds: (string | null | undefined)[] = []): Promise<number> {
+  const keep = new Set(keepAssetIds.filter(Boolean) as string[]);
+  const all = await books.list();
+  for (const b of all) await books.remove(b.id);
+  for (const a of await assets.list()) if (!keep.has(a.id)) await assets.remove(a.id);
+  repoEvents.emit({ type: 'reset' });
+  return all.length;
+}
+
+/** Full factory reset of this device (books, files, settings). Not used by the profile any more. */
 export async function clearAllData(): Promise<void> {
   await idbClearAll();
   try { localStorage.removeItem('bookly.settings'); } catch { /* ignore */ }

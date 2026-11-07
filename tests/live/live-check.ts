@@ -109,6 +109,32 @@ async function main() {
     must(after.title === `A2 ${tag}`, after.title);
   });
 
+  // Delete-all-books with the server 4-digit code. Runs only on the dedicated test accounts (A and B).
+  await check('wipe-books: wrong code rejected, right code deletes only A’s books; B untouched', async () => {
+    const start = await a.client.invoke<{ request_id?: string; code?: string; error?: string }>('wipe-books', { action: 'start' });
+    if (start.status === 503) return 'skipped — migration bookly_book_wipe not applied yet';
+    must(start.status === 200 && /^\d{4}$/.test(start.body.code ?? ''), `${start.status} ${JSON.stringify(start.body)}`);
+    // B keeps a book in the cloud during A's wipe
+    const bBook = createBook({ title: `B keep ${tag}` });
+    await b.local.save(bBook);
+    await b.engine.sync('backup', [bBook.id]);
+    const wrong = start.body.code === '0000' ? '1111' : '0000';
+    const w = await a.client.invoke<{ status?: string; attempts_left?: number }>('wipe-books', { action: 'confirm', request_id: start.body.request_id, code: wrong });
+    must(w.body.status === 'wrong' && w.body.attempts_left === 4, JSON.stringify(w.body));
+    const byB = await b.client.invoke<{ status?: string }>('wipe-books', { action: 'confirm', request_id: start.body.request_id, code: start.body.code });
+    must(byB.body.status === 'invalid', `B cannot use A’s code: ${JSON.stringify(byB.body)}`);
+    const ok = await a.client.invoke<{ status?: string; books?: number }>('wipe-books', { action: 'confirm', request_id: start.body.request_id, code: start.body.code });
+    must(ok.body.status === 'ok', JSON.stringify(ok.body));
+    const replay = await a.client.invoke<{ status?: string }>('wipe-books', { action: 'confirm', request_id: start.body.request_id, code: start.body.code });
+    must(replay.body.status === 'invalid', `replay: ${JSON.stringify(replay.body)}`);
+    const aLeft = await a.client.select('books', 'select=local_id');
+    must(aLeft.length === 0, `${aLeft.length} A books left`);
+    const bLeft = await b.client.select<{ local_id: string }>('books', `select=local_id&local_id=eq.${bBook.id}`);
+    must(bLeft.length === 1, 'B book must stay');
+    await b.engine.removeFromCloud(bBook.id);
+    return `deleted ${ok.body.books} A book(s)`;
+  });
+
   await check('token refresh works', async () => { const s = await a.client.refresh(); must(s?.access_token, 'no token'); });
 
   await check('cleanup: remove cloud copy and orphaned image', async () => {

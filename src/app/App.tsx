@@ -24,6 +24,7 @@ const PAGE_LOADERS = {
   ExportPage: () => import('../features/export/ExportPage'),
   ImportPage: () => import('../features/import/ImportPage'),
   CloudPage: () => import('../features/cloud/CloudPage'),
+  AboutPage: () => import('../features/about/AboutPage'),
 };
 
 /** Loads every screen in the background once the app is idle, so they keep working offline. */
@@ -44,6 +45,7 @@ const CoverPage = lazy(PAGE_LOADERS.CoverPage);
 const ExportPage = lazy(PAGE_LOADERS.ExportPage);
 const ImportPage = lazy(PAGE_LOADERS.ImportPage);
 const CloudPage = lazy(PAGE_LOADERS.CloudPage);
+const AboutPage = lazy(PAGE_LOADERS.AboutPage);
 
 const TABS: { path: string; icon: IconName; label: MessageKey; match: (p: string) => boolean }[] = [
   { path: routes.home(), icon: 'home', label: 'nav.home', match: (p) => p === '/' },
@@ -136,6 +138,7 @@ function Shell() {
     case 'export': page = <ExportPage key={b ?? 'pick'} bookId={b} />; break;
     case 'import': page = <ImportPage />; break;
     case 'cloud': page = <CloudPage />; break;
+    case 'about': page = <AboutPage />; break;
     default: page = <EmptyState icon="alert" title={t('notFound.title')} action={<Button onClick={() => navigate('/')}>{t('nav.home')}</Button>} />;
   }
 

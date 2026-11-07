@@ -3,7 +3,7 @@ import { useLibrary, useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes } from '../../app/router';
 import { BookCover } from '../../components/BookCover';
 import { Icon, type IconName } from '../../components/Icon';
-import { Button, EmptyState, Field, PageHeader, Segmented, Switch } from '../../components/ui';
+import { Button, EmptyState, Field, PageHeader, Segmented, Select, Switch } from '../../components/ui';
 import type { MessageKey } from '../../i18n';
 import { bookWordCount } from '../../models/book';
 import { downloadBytes, exportBook, formatBytes } from '../../services/export/prepare';
@@ -108,13 +108,8 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
             <strong>{book.title}</strong>
             <small>{t('common.chapters', { n: book.chapters.length })} · {t('common.words', { n: bookWordCount(book) })}</small>
             {live.length > 1 && (
-              <label className="select-wrap">
-                <span className="sr-only">{t('export.book')}</span>
-                <Icon name="book" size={16} />
-                <select value={book.id} onChange={(e) => { setSelected(e.target.value); setLast(null); }} data-testid="export-book">
-                  {live.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
-                </select>
-              </label>
+              <Select variant="chip" icon="book" label={t('export.book')} value={book.id} onChange={(v) => { setSelected(v); setLast(null); }} testId="export-book"
+                options={live.map((b) => ({ value: b.id, label: b.title }))} />
             )}
           </div>
         </div>

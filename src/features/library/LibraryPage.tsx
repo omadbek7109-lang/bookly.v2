@@ -4,7 +4,7 @@ import { navigate, routes, useRoute } from '../../app/router';
 import { BookCover } from '../../components/BookCover';
 import { BookMenu } from '../../components/BookMenu';
 import { Icon } from '../../components/Icon';
-import { Button, EmptyState, IconButton, PageHeader, ProgressBar, Segmented } from '../../components/ui';
+import { Button, EmptyState, IconButton, PageHeader, ProgressBar, Segmented, Select } from '../../components/ui';
 import { bookProgress, bookWordCount, blockText, type Book, type BookCategory } from '../../models/book';
 import type { MessageKey } from '../../i18n';
 import { books as repo } from '../../services/storage/repository';
@@ -91,24 +91,10 @@ export default function LibraryPage({ onCreate }: { onCreate: () => void }) {
       </div>
       <Segmented value={tab} options={tabs} onChange={setTab} label={t('books.title')} scroll />
       <div className="filters">
-        <label className="select-wrap">
-          <span className="sr-only">{t('books.sort')}</span>
-          <Icon name="arrowDown" size={16} />
-          <select value={sort} onChange={(e) => setSort(e.target.value as Sort)} disabled={tab === 'recent' || tab === 'trash'} data-testid="library-sort">
-            <option value="updated">{t('books.sort.updated')}</option>
-            <option value="created">{t('books.sort.created')}</option>
-            <option value="title">{t('books.sort.title')}</option>
-            <option value="words">{t('books.sort.words')}</option>
-          </select>
-        </label>
-        <label className="select-wrap">
-          <span className="sr-only">{t('creator.category')}</span>
-          <Icon name="layers" size={16} />
-          <select value={cat} onChange={(e) => setCat(e.target.value as BookCategory | 'all')} data-testid="library-category">
-            <option value="all">{t('books.filter.all')}</option>
-            {CATS.map((c) => <option key={c} value={c}>{t(`category.${c}` as MessageKey)}</option>)}
-          </select>
-        </label>
+        <Select variant="chip" icon="arrowDown" label={t('books.sort')} value={sort} onChange={setSort} disabled={tab === 'recent' || tab === 'trash'} testId="library-sort"
+          options={(['updated', 'created', 'title', 'words'] as Sort[]).map((v) => ({ value: v, label: t(`books.sort.${v}` as MessageKey) }))} />
+        <Select variant="chip" icon="layers" label={t('creator.category')} value={cat} onChange={setCat} testId="library-category"
+          options={[{ value: 'all' as const, label: t('books.filter.all') }, ...CATS.map((c) => ({ value: c, label: t(`category.${c}` as MessageKey) }))]} />
         {tab === 'trash' && counts.trash > 0 && <Button size="sm" variant="danger" icon="trash" onClick={() => void emptyTrash()}>{t('books.trashEmptyAll')}</Button>}
       </div>
 

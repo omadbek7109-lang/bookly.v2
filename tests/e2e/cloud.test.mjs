@@ -61,7 +61,7 @@ async function createBook(page, title) {
   await page.fill('[data-testid=details-title]', title);
   await page.keyboard.press('Escape');
   const ed = page.locator('[data-testid=blocks] .editable').first();
-  await ed.click();
+  await ed.click({ timeout: 8000 }).catch(async (e) => { await page.screenshot({ path: path.join(OUT, 'debug-createbook.png') }); throw e; });
   await page.keyboard.type(`${title} matni`);
   await page.waitForFunction(() => document.querySelector('[data-testid=save-status]')?.getAttribute('data-status') === 'saved');
   return page.evaluate(() => location.hash.split('/')[2].split('?')[0]);
@@ -84,6 +84,14 @@ async function signIn(page, email) {
   await page.fill('[data-testid=auth-password]', 'parol12345');
   await page.click('[data-testid=auth-submit]');
   await page.waitForSelector('[data-testid=account-email]');
+}
+
+/** The backup question only appears when there are books to move; an empty account is enabled silently. */
+const promptAnswered = (page) => page.waitForFunction(() => !!JSON.parse(localStorage.getItem('bookly.settings') || '{}').cloudPromptedFor, null, { timeout: 10000 });
+
+async function answerPrompt(page) {
+  const btn = page.locator('[data-testid=prompt-backup]');
+  try { await btn.waitFor({ timeout: 2500 }); await btn.click(); } catch { /* not shown: nothing to back up */ }
 }
 
 const rowStatus = (page, title) => page.locator('[data-testid=cloud-row]', { hasText: title }).getAttribute('data-status');
@@ -157,7 +165,7 @@ test('two devices sync automatically; simultaneous edits ask the user and "keep 
   const fake = createFakeSupabase();
   const a = await device(fake); const b = await device(fake);
   await signUp(a.page, 'ikki@example.com');
-  await a.page.click('[data-testid=prompt-backup]');
+  await answerPrompt(a.page);
   const id = await createBook(a.page, 'Umumiy kitob');
   await a.page.waitForFunction(() => true);
   await go(a.page, '#/cloud');
@@ -201,7 +209,7 @@ test('offline: local work continues, status says offline, backup resumes when on
   const fake = createFakeSupabase();
   const { ctx, page } = await device(fake);
   await signUp(page, 'oflayn@example.com');
-  await page.click('[data-testid=prompt-backup]');
+  await answerPrompt(page);
   await page.waitForTimeout(3500); // background prefetch of all screens (what makes the app usable offline)
   fake.setOnline(false);
   await ctx.setOffline(true);
@@ -283,9 +291,8 @@ test('Telegram Mini App: launch hash is cleaned, user is signed in automatically
   await page.goto(`${origin}${SITE_BASE}?noIntro=1&fastAI=1#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=android`);
   await page.waitForSelector('.home .hero');
   assert.ok(!page.url().includes('tgWebAppData'), `launch params removed from the URL: ${page.url()}`);
-  await page.waitForSelector('[data-testid=prompt-backup]', { timeout: 10000 });
-  assert.ok(fake.log.includes('POST /functions/v1/telegram-auth'), 'telegram-auth called');
-  await page.click('[data-testid=prompt-backup]');
+  await waitFor(() => fake.log.includes('POST /functions/v1/telegram-auth'), 'telegram-auth called', 10000);
+  await answerPrompt(page);
   await go(page, '#/profile');
   await page.waitForSelector('[data-testid=account-email]');
   assert.equal(await page.locator('[data-testid=account-email]').innerText(), 'Telegram: Malika');
@@ -357,6 +364,113 @@ test('AI yordamchi through the server: needs sign-in, then real answers; nothing
   await page.click('[data-testid=ai-accept]');
   await page.waitForFunction(() => document.querySelector('[data-testid=blocks] .editable')?.textContent?.startsWith('AI(rewrite)'));
   assert.deepEqual(fake.aiCalls, ['rewrite']);
+  await ctx.close();
+});
+
+test('delete all books (signed in): server 4-digit code, wrong/locked/replay rejected, only this user\'s books go, account and settings stay', async () => {
+  const fake = createFakeSupabase();
+  // another user with their own books in the cloud — must never be touched
+  const other = await device(fake);
+  await signUp(other.page, 'boshqa@test.uz');
+  await promptAnswered(other.page);
+  await createBook(other.page, 'Boshqa odam kitobi');
+  await go(other.page, '#/cloud');
+  await other.page.click('[data-testid=backup-now]');
+  await waitFor(() => fake.state.books.length === 1, 'other user backed up');
+  await other.ctx.close();
+
+  const { ctx, page } = await device(fake, { width: 360, height: 740 });
+  await signUp(page, 'ochiruvchi@test.uz');
+  await promptAnswered(page);
+  await createBook(page, 'Birinchi kitob');
+  await go(page, '#/');
+  await createBook(page, 'Ikkinchi kitob');
+  await go(page, '#/cloud');
+  await page.click('[data-testid=backup-now]');
+  await waitFor(() => fake.state.books.length === 3, 'both books backed up');
+  const me = [...fake.state.users.values()].find((u) => u.email === 'ochiruvchi@test.uz').id;
+
+  await go(page, '#/profile');
+  await page.click('[data-testid=clear-all]');
+  await page.waitForSelector('[data-testid=wipe-sheet][data-mode=server]');
+  await page.waitForSelector('[data-testid=wipe-input]');
+  const code = (await page.locator('[data-testid=wipe-code]').innerText()).replace(/\D/g, '');
+  assert.match(code, /^\d{4}$/);
+  assert.equal(fake.wipeRequests.filter((r) => r.user_id === me && r.status === 'pending').length, 1, 'one session per user');
+  assert.equal(await page.locator('[data-testid=wipe-confirm]').isDisabled(), true, 'disabled until 4 digits');
+  // wrong code: server counts the attempt, nothing deleted
+  const wrong = code === '0000' ? '1111' : '0000';
+  await page.fill('[data-testid=wipe-input]', wrong);
+  await page.click('[data-testid=wipe-confirm]');
+  await page.waitForSelector('[data-testid=wipe-message]');
+  assert.match(await page.locator('[data-testid=wipe-message]').innerText(), /4/);
+  assert.equal(fake.state.books.length, 3, 'nothing deleted after a wrong code');
+  // letters and extra digits are ignored by the numeric input
+  await page.fill('[data-testid=wipe-input]', `a${code}9`);
+  assert.equal(await page.locator('[data-testid=wipe-input]').inputValue(), code);
+  await page.screenshot({ path: path.join(OUT, 'wipe-server-360.png') });
+  await page.click('[data-testid=wipe-confirm]');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=wipe-sheet]'));
+  // this user's cloud books, chapters and files are gone; the other user's book is untouched
+  assert.deepEqual(fake.state.books.map((b) => b.title), ['Boshqa odam kitobi']);
+  assert.ok(fake.state.chapters.every((c) => c.user_id !== me));
+  assert.ok([...fake.state.objects.keys()].every((k) => !k.startsWith(`${me}/`)));
+  // replay of the used code is rejected
+  const used = fake.wipeRequests.find((r) => r.user_id === me && r.status === 'used');
+  const token = await page.evaluate(() => JSON.parse(localStorage.getItem('bookly.auth')).access_token);
+  const replay = await fake.handle('POST', `${SUPA}/functions/v1/wipe-books`, { authorization: `Bearer ${token}` }, Buffer.from(JSON.stringify({ action: 'confirm', request_id: used.id, code: used.code })));
+  assert.equal(JSON.parse(replay.body).status, 'invalid', 'a used code cannot be replayed');
+  const noAuth = await fake.handle('POST', `${SUPA}/functions/v1/wipe-books`, {}, Buffer.from(JSON.stringify({ action: 'start' })));
+  assert.equal(noAuth.status, 401, 'no session → rejected');
+  // device: no books left, still signed in, settings kept
+  await go(page, '#/books');
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('[data-testid=book-row]').count(), 0);
+  await go(page, '#/profile');
+  await page.waitForSelector('[data-testid=account-email]');
+  // after the wipe a later sync must not bring anything back
+  await go(page, '#/cloud');
+  await page.click('[data-testid=backup-now]');
+  await page.waitForTimeout(800);
+  assert.deepEqual(fake.state.books.map((b) => b.title), ['Boshqa odam kitobi']);
+  await ctx.close();
+});
+
+test('delete all books: 5 wrong codes lock the session and a new code is needed; expired codes are refused', async () => {
+  const fake = createFakeSupabase({ wipeTtlMs: 1500 });
+  const { ctx, page } = await device(fake);
+  await signUp(page, 'qulf@test.uz');
+  await promptAnswered(page);
+  await createBook(page, 'Qolishi kerak');
+  await go(page, '#/cloud');
+  await page.click('[data-testid=backup-now]');
+  await waitFor(() => fake.state.books.length === 1, 'backed up');
+  await go(page, '#/profile');
+  await page.click('[data-testid=clear-all]');
+  await page.waitForSelector('[data-testid=wipe-input]');
+  // expiry: wait past the (shortened) TTL, then the server refuses the right code
+  const code1 = (await page.locator('[data-testid=wipe-code]').innerText()).replace(/\D/g, '');
+  await page.waitForTimeout(1700);
+  // the UI notices the expiry itself: input disabled, "new code" offered
+  await page.waitForSelector('[data-testid=wipe-input][disabled]');
+  const token = await page.evaluate(() => JSON.parse(localStorage.getItem('bookly.auth')).access_token);
+  const late = await fake.handle('POST', `${SUPA}/functions/v1/wipe-books`, { authorization: `Bearer ${token}` }, Buffer.from(JSON.stringify({ action: 'confirm', request_id: fake.wipeRequests[0].id, code: code1 })));
+  assert.equal(JSON.parse(late.body).status, 'expired', 'server refuses an expired code even if it is right');
+  assert.equal(fake.state.books.length, 1);
+  fake.setWipeTtl(300000);
+  await page.click('[data-testid=wipe-new-code]');
+  await page.waitForSelector('[data-testid=wipe-input]:not([disabled])');
+  const code = (await page.locator('[data-testid=wipe-code]').innerText()).replace(/\D/g, '');
+  const wrong = code === '1234' ? '4321' : '1234';
+  for (let i = 0; i < 5; i++) {
+    await page.fill('[data-testid=wipe-input]', wrong);
+    await page.click('[data-testid=wipe-confirm]');
+    await page.waitForFunction((n) => document.querySelector('[data-testid=wipe-message]') && document.querySelector('[data-testid=wipe-input]')?.value === '', i);
+  }
+  assert.match(await page.locator('[data-testid=wipe-message]').innerText(), /urinish|yangi kod/i);
+  assert.equal(await page.locator('[data-testid=wipe-new-code]').count(), 1, 'offers a new code');
+  assert.equal(fake.wipeRequests.at(-1).status, 'locked');
+  assert.equal(fake.state.books.length, 1, 'nothing deleted');
   await ctx.close();
 });
 

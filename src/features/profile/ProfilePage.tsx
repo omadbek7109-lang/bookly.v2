@@ -5,7 +5,9 @@ import { Button, Field, ListRow, PageHeader, Segmented, Sheet, Switch } from '..
 import { useAssetUrl } from '../../hooks/useAssetUrl';
 import type { Locale } from '../../i18n';
 import { isSingleText } from '../../models/book';
-import { clearAllData, createBackup, restoreBackup } from '../../services/storage/backup';
+import { createBackup, restoreBackup } from '../../services/storage/backup';
+import { WipeSheet } from './WipeSheet';
+import { navigate, routes } from '../../app/router';
 import { storageEstimate } from '../../services/storage/db';
 import { assets } from '../../services/storage/repository';
 import { downloadBlob, formatBytes } from '../../services/export/prepare';
@@ -22,11 +24,11 @@ const LANG_NAMES: Record<Locale, string> = { uz: 'O‘zbekcha', ru: 'Русск�
 export default function ProfilePage() {
   const { t, settings, update } = useSettings();
   const { books } = useLibrary();
-  const { toast, prompt } = useUi();
+  const { toast } = useUi();
   const cloud = useCloud();
   const status = useAccountStatus();
   const [usage, setUsage] = useState<number | null>(null);
-  const [sheet, setSheet] = useState<null | 'edit' | 'about' | 'privacy' | 'help'>(null);
+  const [sheet, setSheet] = useState<null | 'edit' | 'privacy' | 'help' | 'wipe'>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const avatarInput = useRef<HTMLInputElement>(null);
   const restoreInput = useRef<HTMLInputElement>(null);
@@ -58,26 +60,7 @@ export default function ProfilePage() {
     catch (e) { toast((e as Error).message, 'error'); }
   };
 
-  // Deleting everything needs the word typed exactly — a single tap can never wipe the library.
-  const wipe = async () => {
-    const CONFIRM_WORD = t('profile.wipeWord');
-    const typed = await prompt({
-      title: t('profile.clearAll'),
-      message: t('profile.wipeMessage', { word: CONFIRM_WORD }),
-      placeholder: CONFIRM_WORD,
-      confirmLabel: t('common.delete'),
-      danger: true,
-    });
-    if (typed === null) return;
-    const norm = (x: string) => x.trim().toUpperCase().replace(/[‘’ʻʼ`']/g, "'");
-    if (norm(typed) !== norm(CONFIRM_WORD)) {
-      toast(t('profile.wipeMismatch'), 'error');
-      return;
-    }
-    await clearAllData();
-    toast(t('profile.cleared'), 'success');
-    setTimeout(() => location.reload(), 600);
-  };
+
 
   const realName = settings.profile.name.trim() || tgName;
   const initials = realName ? realName.split(/\s+/).map((x) => x[0]).join('').slice(0, 2).toUpperCase() : 'B';
@@ -156,14 +139,16 @@ export default function ProfilePage() {
         <p className="muted small storage-note" data-testid="storage-info">
           <Icon name="folder" size={14} /> {cloud.user ? t('profile.storedDeviceCloud') : t('profile.storedDevice')}{usage !== null ? ` · ${t('profile.used', { size: formatBytes(usage) })}` : ''}
         </p>
-        <button type="button" className="danger-link" onClick={() => void wipe()} data-testid="clear-all"><Icon name="trash" size={16} /> {t('profile.clearAll')}</button>
+        <button type="button" className="danger-link" onClick={() => setSheet('wipe')} data-testid="clear-all"><Icon name="trash" size={16} /> {t('profile.clearAll')}</button>
+        <p className="muted small wipe-hint">{t('wipe.hint')}</p>
+        <WipeSheet open={sheet === 'wipe'} onClose={() => setSheet(null)} keepAssetIds={[settings.profile.avatarAssetId]} />
       </div>
       <input ref={restoreInput} type="file" accept="application/json,.json" hidden onChange={(e) => { void restore(e.target.files?.[0]); e.target.value = ''; }} />
 
       {/* F. About */}
       <h2 className="sub-title">{t('profile.appInfo')}</h2>
       <div className="list glass">
-        <ListRow icon="info" title={t('profile.about')} onClick={() => setSheet('about')} />
+        <ListRow icon="info" title={t('profile.about')} onClick={() => navigate(routes.about())} testId="profile-about" />
         <ListRow icon="shield" title={t('profile.privacy')} onClick={() => setSheet('privacy')} />
         <ListRow icon="help" title={t('profile.help')} onClick={() => setSheet('help')} testId="help" />
         <ListRow icon="code" title={t('profile.versionLabel')} subtitle={__BOOKLY_VERSION__} />
@@ -182,9 +167,8 @@ export default function ProfilePage() {
         </div>
       </Sheet>
 
-      <Sheet open={sheet === 'about' || sheet === 'privacy' || sheet === 'help'} onClose={() => setSheet(null)} size="sm"
-        title={sheet === 'about' ? t('profile.about') : sheet === 'privacy' ? t('profile.privacy') : t('profile.help')}>
-        {sheet === 'about' && <><p>{t('profile.aboutText')}</p><p className="muted small">{t('profile.version', { v: __BOOKLY_VERSION__ })} · {t('app.slogan')}</p></>}
+      <Sheet open={sheet === 'privacy' || sheet === 'help'} onClose={() => setSheet(null)} size="sm"
+        title={sheet === 'privacy' ? t('profile.privacy') : t('profile.help')}>
         {sheet === 'privacy' && <p>{t('profile.privacyText')}</p>}
         {sheet === 'help' && (
           <ol className="help-steps">

@@ -53,6 +53,9 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   not_configured: 'err.not_configured',
   not_in_telegram: 'err.not_in_telegram',
   need_start: 'err.need_start',
+  wipe_not_ready: 'err.wipe_not_ready',
+  wipe_rate_limited: 'err.wipe_rate_limited',
+  needs_login: 'err.needs_login',
   file_too_large: 'err.file_too_large',
   telegram_error: 'err.telegram_error',
   server_error: 'err.server_error',
@@ -244,6 +247,21 @@ export class CloudClient {
   }
 
   // ---------------------------------------------------------------- data (PostgREST)
+  /**
+   * Calls an Edge Function as the signed-in user. Returns the HTTP status and JSON body without throwing
+   * for 4xx answers (callers interpret them); network failures throw CloudError('network').
+   */
+  async invoke<T>(fn: string, body: unknown): Promise<{ status: number; body: T }> {
+    let res: Response;
+    try {
+      res = await this.authed(`/functions/v1/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    } catch (e) {
+      if (e instanceof CloudError) throw e;
+      throw new CloudError('network', 'network');
+    }
+    return { status: res.status, body: (await res.json().catch(() => ({}))) as T };
+  }
+
   async rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
     return this.json<T>(await this.authed(`/rest/v1/rpc/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) }));
   }

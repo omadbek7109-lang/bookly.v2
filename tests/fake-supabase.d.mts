@@ -4,9 +4,12 @@ export interface FakeSupabase {
   log: string[];
   sentFiles: string[];
   aiCalls: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  wipeRequests: any[];
+  setWipeTtl(ms: number): void;
   setOnline(v: boolean): void;
   confirm(email: string): void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   state: { users: Map<string, any>; books: any[]; chapters: any[]; assets: any[]; objects: Map<string, any>; sync: any[] };
 }
-export function createFakeSupabase(opts?: { requireConfirmation?: boolean; aiConfigured?: boolean }): FakeSupabase;
+export function createFakeSupabase(opts?: { requireConfirmation?: boolean; aiConfigured?: boolean; wipeTtlMs?: number }): FakeSupabase;

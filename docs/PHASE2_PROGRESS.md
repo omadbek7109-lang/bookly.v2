@@ -80,3 +80,21 @@ FLECT STARS (`kyqzoamprcmupxvssokj`) and DAMEO (`reymdxmzfgctdhowndye`) are neve
 - [x] Mobile: toasts move to the top while a dialog is open; dialogs rise above the on-screen keyboard (global --kb).
 - [x] New books and default chapter names follow the chosen language.
 - [x] RLS re-checked: every public table owner-only; cross-user read = 0 rows; users cannot write ai_usage.
+
+## UI/UX polish, account data management (2026-11-07)
+- [x] Android Telegram keyboard closing while typing in dialogs — root cause: `Sheet` re-ran its focus/scroll-lock effect on
+      every render because `onClose` (a new arrow function each render) was in its deps; each keystroke blurred the input and
+      re-focused the first field. Fixed with a ref; regression test counts blur events and checks the DOM node is kept.
+- [x] "Delete all data" → delete all BOOKS only (books, chapters, book images/audio). Account, password, profile, avatar and
+      settings are kept. Signed in: Edge Function `wipe-books` makes a random 4-digit code (crypto.getRandomValues, no
+      modulo bias), stores only an HMAC, 5 min expiry, 5 attempts, single use, one pending request per user, 10/hour,
+      check + delete in one locked transaction (`bookly_wipe_confirm`), only `${user}/` storage files; codes never logged.
+      Not signed in: the books exist only on this device, so the code is created and checked on the device.
+- [ ] Owner action: apply migration `20261107140000_bookly_book_wipe.sql` (until then the signed-in flow answers
+      "not ready" honestly instead of pretending). Optional Edge Function secret BOOKLY_WIPE_SECRET.
+- [x] Custom `Select` (bottom sheet ≤599 px, popover on wider screens, radio indicators, keyboard, type-ahead) replaces every
+      native <select> (library sort/category, export book, book details, creator).
+- [x] Design-system pass on buttons, inputs, switches, segmented controls, sheets; book list no longer overflows at 360 px
+      with long titles (grid minmax(0,1fr)).
+- [x] "Bookly haqida" page (#/about) in uz/ru/en with honest feature status (Mavjud / Demo / Server ulanishi kerak / Rejada).
+- [x] Tests: unit 66/66, e2e 36/36 (flows 19, cloud 11, i18n 6).

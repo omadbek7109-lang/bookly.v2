@@ -40,4 +40,8 @@ const stBody = await st.json().catch(() => ({}));
 report(st.ok && typeof stBody.configured === 'boolean', `ai-assist status (configured: ${stBody.configured})`, `${st.status} ${JSON.stringify(stBody)}`);
 const anonAi = await fetch(ai, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ task: 'ideas', text: '' }) });
 report(anonAi.status === (stBody.configured ? 401 : 503), 'ai-assist refuses requests without a session', `${anonAi.status} ${await anonAi.text()}`);
+
+// ---- wipe-books: requires a signed-in user; never deletes anything for anonymous requests.
+const wipe = await fetch(`${URL_}/functions/v1/wipe-books`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start' }) });
+report(wipe.status === 401, 'wipe-books refuses requests without a session', `${wipe.status} ${await wipe.text()}`);
 process.exit(failed ? 1 : 0);

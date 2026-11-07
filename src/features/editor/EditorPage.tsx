@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes, useRoute } from '../../app/router';
 import { Icon, type IconName } from '../../components/Icon';
-import { Button, EmptyState, Field, IconButton, ListRow, Segmented, Sheet, Spinner } from '../../components/ui';
+import { Button, EmptyState, Field, IconButton, ListRow, Segmented, Select, Sheet, Spinner } from '../../components/ui';
 import {
   chapterWordCount, createBlock, createChapter, bookWordCount, blockText, isSingleText,
   type Align, type Block, type Book, type BookCategory, type BookLanguage, type BlockType, type Chapter,
@@ -553,10 +553,12 @@ function BookDetails({ book, single, onLayout, onChange, onSaved }: { book: Book
       <Field label={t('creator.description')} htmlFor="d-desc"><textarea id="d-desc" className="input" rows={3} value={book.description} onChange={(e) => set({ description: e.target.value })} placeholder={t('editor.descriptionPh')} /></Field>
       <div className="form-row">
         <Field label={t('creator.category')} htmlFor="d-cat">
-          <select id="d-cat" className="input" value={book.category} onChange={(e) => set({ category: e.target.value as BookCategory })}>{CATS.map((c) => <option key={c} value={c}>{t(`category.${c}` as MessageKey)}</option>)}</select>
+          <Select id="d-cat" label={t('creator.category')} value={book.category} onChange={(v) => set({ category: v })} testId="details-category"
+            options={CATS.map((c) => ({ value: c, label: t(`category.${c}` as MessageKey) }))} />
         </Field>
         <Field label={t('creator.language')} htmlFor="d-lang">
-          <select id="d-lang" className="input" value={book.language} onChange={(e) => set({ language: e.target.value as BookLanguage })}>{(['uz', 'en', 'ru'] as const).map((l) => <option key={l} value={l}>{t(`lang.${l}` as MessageKey)}</option>)}</select>
+          <Select id="d-lang" label={t('creator.language')} value={book.language} onChange={(v) => set({ language: v as BookLanguage })} testId="details-language"
+            options={(['uz', 'en', 'ru'] as const).map((l) => ({ value: l, label: t(`lang.${l}` as MessageKey) }))} />
         </Field>
       </div>
       <Field label={t('layout.label')} hint={single ? t('layout.singleHint') : t('layout.chaptersHint', { n: book.chapters.length })}>
