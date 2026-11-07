@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../../../src/services/export/types.ts"],
+  "sourcesContent": ["import type { Book } from '../../models/book';\n\nexport type ExportFormat = 'pdf' | 'pptx' | 'epub' | 'docx';\n\n/** Binary asset already decoded to bytes \u2014 exporters never touch IndexedDB or the DOM. */\nexport interface ResolvedAsset {\n  id: string;\n  bytes: Uint8Array;\n  mime: string;\n  /** Pixel size for images. */\n  width?: number;\n  height?: number;\n  name?: string;\n}\n\nexport interface ExportOptions {\n  includeCover: boolean;\n  includeToc: boolean;\n  pageSize: 'A4' | 'A5' | 'Letter';\n}\n\nexport interface ExportInput {\n  book: Book;\n  assets: Record<string, ResolvedAsset>;\n  /** Rendered cover artwork (JPEG/PNG) \u2014 optional. */\n  cover?: ResolvedAsset | null;\n  options: ExportOptions;\n}\n\nexport interface ExportOutput {\n  bytes: Uint8Array;\n  mime: string;\n  filename: string;\n  extension: string;\n}\n\nexport const MIME: Record<ExportFormat, string> = {\n  pdf: 'application/pdf',\n  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',\n  epub: 'application/epub+zip',\n  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',\n};\n\nexport const DEFAULT_EXPORT_OPTIONS: ExportOptions = { includeCover: true, includeToc: true, pageSize: 'A5' };\n\nexport function isImageMime(m: string) { return m === 'image/png' || m === 'image/jpeg'; }\n"],
+  "mappings": "AAoCO,IAAMA,EAAqC,CAChD,IAAK,kBACL,KAAM,4EACN,KAAM,uBACN,KAAM,yEACR",
+  "names": ["MIME"]
+}

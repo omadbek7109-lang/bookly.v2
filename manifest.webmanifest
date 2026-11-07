@@ -1,0 +1,9 @@
+{
+  "name": "Bookly 2.0 — AI Book Creator",
+  "short_name": "Bookly",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#0f1030",
+  "theme_color": "#0f1030",
+  "icons": [{ "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

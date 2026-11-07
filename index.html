@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="uz">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#0f1030" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f7f5fb" media="(prefers-color-scheme: light)" />
+    <meta name="description" content="Bookly 2.0 — g'oyangizni sun'iy intellekt yordamida chiroyli elektron kitobga aylantiring." />
+    <meta name="color-scheme" content="light dark" />
+    <title>Bookly 2.0 — AI Book Creator</title>
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <script>
+      // Apply the saved theme before first paint to avoid a flash.
+      try {
+        var s = JSON.parse(localStorage.getItem('bookly.settings') || '{}');
+        var t = s.theme || 'system';
+        var dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+    </script>
+    <script>
+      // Telegram Mini App API: loaded only when Telegram launched us (it passes #tgWebAppData=...).
+      var tgLaunch = /tgWebApp(Data|Version|Platform)=/.test(location.hash + location.search);
+      try { tgLaunch = tgLaunch || !!sessionStorage.getItem('__telegram__initParams'); } catch (e) {}
+      if (tgLaunch) {
+        document.write('<script src="https://telegram.org/js/telegram-web-app.js?59"><\/script>');
+      }
+    </script>
+    <link rel="stylesheet" href="./assets/app-RLCZKCZX.css">
+    <script type="module" src="./assets/app-2D7Y2DYG.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>Bookly ishlashi uchun JavaScript yoqilgan bo'lishi kerak.</noscript>
+  </body>
+</html>
