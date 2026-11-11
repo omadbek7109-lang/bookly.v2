@@ -98,3 +98,19 @@ FLECT STARS (`kyqzoamprcmupxvssokj`) and DAMEO (`reymdxmzfgctdhowndye`) are neve
       with long titles (grid minmax(0,1fr)).
 - [x] "Bookly haqida" page (#/about) in uz/ru/en with honest feature status (Mavjud / Demo / Server ulanishi kerak / Rejada).
 - [x] Tests: unit 66/66, e2e 36/36 (flows 19, cloud 11, i18n 6).
+
+## Heat / battery fixes (2026-11-11)
+Measured with `npm run perf:heat` (Chrome counters + all-thread trace, CPU slowed 4× like a mid-range phone):
+| scenario | before | after |
+|---|---|---|
+| home, idle (all threads) | 40 % | 6 % |
+| About, scrolling | 64 % | 34 % |
+| editor, typing (script time) | 1366 ms | 823 ms |
+| reader, 40 scroll events | 40 re-renders | ≤ 20 |
+- [x] Endless "float" animations on the home hero art (3 copies, 2 hidden) and empty states removed.
+- [x] Live `backdrop-filter` blur removed from cards, bars, toolbar and reader (14 → 0); bars are now near-opaque.
+- [x] `background-attachment: fixed` replaced by a fixed `body::before` layer (no full repaint on scroll).
+- [x] Word count cached per block (WeakMap): a keystroke recounts one block, not the whole book.
+- [x] Reader re-renders only when the shown percent changes; `--kb` only written when it changes;
+      hero carousel pauses when the app is in the background.
+- [x] Tests: unit 67/67 (word-count cache), e2e 37/37 (new battery test fails on the old code).

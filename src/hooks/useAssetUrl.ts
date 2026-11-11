@@ -17,9 +17,13 @@ export function useKeyboardInset(): void {
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
+    let last = '';
     const update = () => {
       const inset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty('--kb', `${inset > 60 ? inset : 0}px`);
+      const v = `${inset > 60 ? Math.round(inset) : 0}px`;
+      if (v === last) return; // visualViewport 'scroll' fires constantly while scrolling; skip no-op style writes
+      last = v;
+      document.documentElement.style.setProperty('--kb', v);
     };
     update();
     vv.addEventListener('resize', update);

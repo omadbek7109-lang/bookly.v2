@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bookProgress, bookWordCount, createBlock, createBook, createChapter, duplicateBook, migrateBook, SCHEMA_VERSION, isSingleText } from '../../src/models/book';
+import { blockWordCount, chapterWordCount, bookProgress, bookWordCount, createBlock, createBook, createChapter, duplicateBook, migrateBook, SCHEMA_VERSION, isSingleText } from '../../src/models/book';
 import { parseInline, plainText, sanitizeInline } from '../../src/utils/inline';
 import { slugify } from '../../src/utils/id';
 
@@ -82,4 +82,19 @@ test('book layout: old books stay "chapters", single-text books keep one untitle
   const withCh = createBook({ title: 'Bobli', layout: 'chapters' });
   assert.equal(isSingleText(withCh), false);
   assert.equal(withCh.chapters[0].title, '1-bob');
+});
+
+test('word count is cached per block: a keystroke recounts only the edited block', () => {
+  const blocks = Array.from({ length: 200 }, (_, i) => createBlock('paragraph', { html: `Blok ${i} <b>matni</b> bor` }));
+  const b = createBook({ title: 'Katta', chapters: [createChapter('Bob', blocks)] });
+  assert.equal(bookWordCount(b), 800);
+  const t0 = performance.now(); for (let i = 0; i < 200; i++) bookWordCount(b); const cached = performance.now() - t0;
+  // edit one block immutably, like the editor does
+  const edited = { ...b.chapters[0].blocks[5], html: 'Bitta yangi so‘z qo‘shildi' } as typeof blocks[number];
+  const b2 = { ...b, chapters: [{ ...b.chapters[0], blocks: b.chapters[0].blocks.map((x, i) => (i === 5 ? edited : x)) }] };
+  assert.equal(blockWordCount(edited), 4);
+  assert.equal(bookWordCount(b2), 800 - 4 + 4);
+  assert.equal(chapterWordCount(b2.chapters[0]), 800);
+  assert.equal(bookWordCount(b), 800, 'old version still counts the same');
+  assert.ok(cached < 50, `200 cached recounts of 200 blocks took ${cached.toFixed(1)} ms`);
 });

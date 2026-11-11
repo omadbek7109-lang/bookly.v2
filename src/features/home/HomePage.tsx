@@ -177,7 +177,7 @@ function HeroCarousel() {
 
   useEffect(() => {
     if (settings.reducedMotion || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    const id = setInterval(() => { if (!paused.current) setI((x) => (x + 1) % HERO.length); }, 6000);
+    const id = setInterval(() => { if (!paused.current && !document.hidden) setI((x) => (x + 1) % HERO.length); }, 6000);
     return () => clearInterval(id);
   }, [settings.reducedMotion]);
 

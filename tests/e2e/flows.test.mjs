@@ -592,6 +592,46 @@ test('About page: opens from profile, shows real feature status in every languag
   await ctx.close();
 });
 
+test('battery / heat: no endless animations, no live blur, no fixed background; reader does not over-render', async () => {
+  const { ctx, page } = await newPage({ width: 360, height: 520 });
+  // Count React commits through the standard DevTools hook (React calls it in production builds too).
+  await ctx.addInitScript(() => {
+    window.__commits = 0;
+    window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = { supportsFiber: true, renderers: new Map(), inject() { return 1; }, onCommitFiberRoot() { window.__commits++; }, onCommitFiberUnmount() {}, onPostCommitFiberRoot() {}, onScheduleFiberRoot() {}, checkDCE() {} };
+  });
+  await page.reload(); await page.waitForSelector('.home');
+  const id = await createAiBook(page, 'Batareya sinovi', 3);
+  const audit = () => page.evaluate(() => {
+    const endless = document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).map((a) => `${a.animationName} on ${a.effect.target?.getAttribute?.('class')}`);
+    const blur = [...document.querySelectorAll('*')].filter((e) => { const c = getComputedStyle(e); return (c.backdropFilter || 'none') !== 'none' || (c.webkitBackdropFilter || 'none') !== 'none'; }).map((e) => e.className);
+    const fixedBg = [document.documentElement, document.body].some((e) => getComputedStyle(e).backgroundAttachment.includes('fixed'));
+    return { endless, blur, fixedBg };
+  });
+  for (const hash of ['#/', '#/books', '#/studio', '#/profile', '#/about', '#/cloud', `#/editor/${id}`, `#/reader/${id}`]) {
+    await go(page, hash);
+    await page.waitForTimeout(900);
+    const a = await audit();
+    assert.deepEqual(a.endless, [], `${hash}: endless animations keep the GPU busy`);
+    assert.deepEqual(a.blur, [], `${hash}: live backdrop blur`);
+    assert.equal(a.fixedBg, false, `${hash}: background-attachment: fixed repaints on scroll`);
+  }
+  // Reader: 40 scroll events must not mean 40 re-renders of the chapter.
+  await go(page, `#/reader/${id}`);
+  await page.waitForSelector('.reader-progress');
+  await page.waitForTimeout(500);
+  const scrollable = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
+  assert.ok(scrollable > 400, `reader chapter is long enough to scroll (${scrollable}px)`);
+  let events = 0;
+  await page.evaluate(() => { window.__commits = 0; window.__scrolls = 0; addEventListener('scroll', () => window.__scrolls++, { passive: true }); });
+  for (let i = 0; i < 40; i++) { await page.mouse.wheel(0, i < 20 ? 4 : -4); await page.waitForTimeout(30); }
+  await page.waitForTimeout(300);
+  const r = await page.evaluate(() => ({ commits: window.__commits, scrolls: window.__scrolls }));
+  events = r.scrolls;
+  assert.ok(events >= 20, `scroll events fired: ${events}`);
+  assert.ok(r.commits <= Math.ceil(events / 2), `reader re-rendered ${r.commits} times for ${events} scroll events`);
+  await ctx.close();
+});
+
 /** Watches one input: counts blur/focus events and whether React replaced the DOM node. */
 async function watchInput(page, sel) {
   await page.locator(sel).evaluate((el) => {

@@ -45,7 +45,10 @@ export default function ReaderPage({ bookId }: { bookId: string }) {
     const onScroll = () => {
       const max = document.documentElement.scrollHeight - innerHeight;
       const local = max > 0 ? Math.min(1, scrollY / max) : 1;
-      setRatio(local);
+      // Re-render only when the shown whole percent changes (not on every scroll event: that re-rendered the
+      // whole chapter dozens of times a second while reading and warmed the phone).
+      const pct = (r: number) => Math.round(((Math.max(idx, 0) + r) / total) * 100);
+      setRatio((prev) => (pct(prev) === pct(local) ? prev : local));
       clearTimeout(tm);
       tm = setTimeout(() => {
         if (idx < 0) return;

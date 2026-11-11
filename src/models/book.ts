@@ -247,8 +247,20 @@ export function blockText(b: Block): string {
   }
 }
 
+/**
+ * Blocks are immutable: an edit creates a new block object and every other block keeps its identity.
+ * Caching per block object means a keystroke recounts only the block being typed in, not the whole book
+ * (counting a long book on every key press kept the phone's CPU busy and warm).
+ */
+const blockWords = new WeakMap<Block, number>();
+export function blockWordCount(b: Block): number {
+  let n = blockWords.get(b);
+  if (n === undefined) { n = countWords(blockText(b)); blockWords.set(b, n); }
+  return n;
+}
+
 export function chapterWordCount(c: Chapter): number {
-  return c.blocks.reduce((n, b) => n + countWords(blockText(b)), 0);
+  return c.blocks.reduce((n, b) => n + blockWordCount(b), 0);
 }
 
 export function bookWordCount(book: Book): number {
