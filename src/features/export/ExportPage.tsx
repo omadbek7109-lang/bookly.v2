@@ -93,7 +93,7 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
     return (
       <div className="page">
         <PageHeader title={t('export.title')} onBack={() => back(routes.studio())} />
-        <EmptyState icon="download" title={t('export.noBooks')} action={<Button icon="sparkles" onClick={() => navigate(routes.create())}>{t('home.empty.cta')}</Button>} />
+        <EmptyState icon="download" title={t('export.noBooks')} action={<Button icon="plus" onClick={() => navigate(routes.create())}>{t('home.empty.cta')}</Button>} />
       </div>
     );
   }

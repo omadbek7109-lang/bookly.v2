@@ -38,7 +38,7 @@ async function langPage(locale, { width = 360, height = 740, telegram = false } 
   page.on('pageerror', (e) => errors.push(`${locale}: ${e.message}`));
   page.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|ERR_|net::/.test(m.text())) errors.push(`${locale} console: ${m.text()}`); });
   const hash = telegram ? '#tgWebAppData=x&tgWebAppVersion=8.0&tgWebAppPlatform=android' : '';
-  await page.goto(`${origin}${SITE_BASE}?noIntro=1&fastAI=1${hash}`);
+  await page.goto(`${origin}${SITE_BASE}?noIntro=1${hash}`);
   await page.waitForSelector('.home');
   return { ctx, page };
 }
@@ -89,8 +89,8 @@ for (const locale of ['ru', 'en', 'uz']) {
     const autoTitle = await page.locator('[data-testid=chapter-title]').inputValue();
     assert.equal(autoTitle, { uz: '2-bob', ru: 'Глава 2', en: 'Chapter 2' }[locale], 'default chapter name follows the book language');
     await page.locator('[data-testid=blocks] .editable').first().click();
-    await page.click('[data-testid=ai-open]');
-    await checkScreen(page, locale, 'assistant');
+    await page.click('[data-testid=style-open]');
+    await checkScreen(page, locale, 'style');
     await page.keyboard.press('Escape');
     await page.click('[data-testid=editor-details]');
     await checkScreen(page, locale, 'details');
@@ -165,10 +165,10 @@ test('mobile: toasts never cover an open dialog; dialogs stay above the keyboard
   // a toast fired while a sheet is open is shown above the sheet, not on top of it
   await page.locator('[data-testid=blocks] .editable').first().click();
   await page.keyboard.type('Matn');
-  await page.click('[data-testid=ai-open]');
-  await page.click('[data-testid=ai-continue]');
-  await page.waitForSelector('[data-testid=ai-result]');
-  await page.click('[data-testid=ai-copy]');
+  // the only chapter cannot be deleted → an error toast while the chapters sheet is open
+  await page.click('[data-testid=chapter-picker]');
+  await page.locator('.sheet [data-testid=ch-delete]').first().click();
+  await page.waitForSelector('.toast');
   const toast = await page.locator('.toast').first().boundingBox();
   const sheet = await page.locator('.sheet').first().boundingBox();
   assert.ok(toast && sheet && toast.y + toast.height <= sheet.y + 1, `toast (${toast?.y}+${toast?.height}) is above the sheet (${sheet?.y})`);

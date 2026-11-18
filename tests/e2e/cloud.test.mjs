@@ -40,7 +40,7 @@ async function device(fake, { width = 390, height = 844 } = {}) {
   });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => pageErrors.push(e.message));
-  await page.goto(`${origin}${SITE_BASE}?fastAI=1&noIntro=1`);
+  await page.goto(`${origin}${SITE_BASE}?noIntro=1`);
   await page.waitForSelector('.home');
   return { ctx, page };
 }
@@ -288,7 +288,7 @@ test('Telegram Mini App: launch hash is cleaned, user is signed in automatically
   });
   const page = await ctx.newPage();
   page.on('pageerror', (e) => pageErrors.push(e.message));
-  await page.goto(`${origin}${SITE_BASE}?noIntro=1&fastAI=1#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=android`);
+  await page.goto(`${origin}${SITE_BASE}?noIntro=1#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=android`);
   await page.waitForSelector('.home .hero');
   assert.ok(!page.url().includes('tgWebAppData'), `launch params removed from the URL: ${page.url()}`);
   await waitFor(() => fake.log.includes('POST /functions/v1/telegram-auth'), 'telegram-auth called', 10000);
@@ -304,14 +304,14 @@ test('Telegram Mini App: launch hash is cleaned, user is signed in automatically
 
   // Export → the user chooses: download or receive the file from the bot in their Telegram chat.
   await go(page, '#/create');
-  await page.fill('[data-testid=creator-topic]', 'Telegram eksport sinovi');
-  await page.locator('[data-testid=creator-chapters]').fill('3');
-  await page.click('[data-testid=creator-outline]');
-  await page.waitForSelector('[data-testid=outline-list] li');
-  await page.click('[data-testid=creator-write]');
-  await page.waitForFunction(() => document.querySelectorAll('.gen-item.is-done').length === document.querySelectorAll('.gen-item').length, null, { timeout: 60000 });
-  await page.click('[data-testid=creator-save-edit]');
+  await page.fill('[data-testid=wizard-title]', 'Telegram eksport sinovi');
+  await page.click('[data-testid=wizard-next]');
+  await page.click('[data-testid=wizard-next]');
+  await page.click('[data-testid=wizard-create]');
   await page.waitForSelector('[data-testid=editor]');
+  await page.locator('[data-testid=blocks] .editable').first().click();
+  await page.keyboard.type('Telegram orqali yuboriladigan kitob matni.');
+  await page.waitForFunction(() => document.querySelector('[data-testid=save-status]')?.getAttribute('data-status') === 'saved', null, { timeout: 8000 });
   await go(page, '#/export');
   await page.click('[data-testid=fmt-pdf]');
   await page.click('[data-testid=export-run]');
@@ -322,48 +322,6 @@ test('Telegram Mini App: launch hash is cleaned, user is signed in automatically
   assert.equal(fake.sentFiles.length, 1, 'file sent through telegram-bot');
   assert.match(fake.sentFiles[0], /\.pdf$/);
   await page.screenshot({ path: path.join(OUT, 'export-telegram.png') });
-  await ctx.close();
-});
-
-test('AI yordamchi through the server: needs sign-in, then real answers; nothing changes until the writer chooses', async () => {
-  const fake = createFakeSupabase({ aiConfigured: true });
-  await fake.fetch(`${SUPA}/auth/v1/signup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'yozuvchi@test.uz', password: 'parol-123456' }) });
-  const ctx = await browser.newContext({ viewport: { width: 360, height: 740 }, isMobile: true, hasTouch: true, colorScheme: 'dark' });
-  await ctx.route(`${SUPA}/**`, async (route) => {
-    const req = route.request();
-    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
-    const r = await fake.handle(req.method(), req.url(), req.headers(), req.postDataBuffer());
-    await route.fulfill({ status: r.status, headers: { ...CORS, ...r.headers }, body: r.body });
-  });
-  const page = await ctx.newPage();
-  page.on('pageerror', (e) => pageErrors.push(e.message));
-  await page.goto(`${origin}${SITE_BASE}?noIntro=1`);
-  await page.waitForSelector('.home');
-  await page.click('[data-testid=fab-create]');
-  await page.click('[data-testid=create-blank]');
-  await page.click('[data-testid=new-create]');
-  await page.waitForSelector('[data-testid=editor]');
-  const para = page.locator('[data-testid=blocks] .editable').first();
-  await para.click();
-  await page.keyboard.type('Kitob yozish qiyin emas');
-  await page.click('[data-testid=ai-open]');
-  // signed out → the sheet explains and offers sign-in instead of failing
-  await page.waitForSelector('[data-testid=ai-login]');
-  await page.click('[data-testid=ai-login]');
-  await page.fill('[data-testid=auth-email]', 'yozuvchi@test.uz');
-  await page.fill('[data-testid=auth-password]', 'parol-123456');
-  await page.click('[data-testid=auth-submit]');
-  await page.waitForFunction(() => !document.querySelector('[data-testid=ai-login]'), null, { timeout: 10000 });
-  await page.keyboard.press('Escape');
-  await para.click();
-  await page.click('[data-testid=ai-open]');
-  await page.click('[data-testid=ai-rewrite]');
-  await page.waitForSelector('[data-testid=ai-result]');
-  assert.equal(await para.innerText(), 'Kitob yozish qiyin emas', 'unchanged before choosing');
-  assert.match(await page.locator('[data-testid=ai-result]').innerText(), /AI\(rewrite\): Kitob yozish qiyin emas/);
-  await page.click('[data-testid=ai-accept]');
-  await page.waitForFunction(() => document.querySelector('[data-testid=blocks] .editable')?.textContent?.startsWith('AI(rewrite)'));
-  assert.deepEqual(fake.aiCalls, ['rewrite']);
   await ctx.close();
 });
 

@@ -1,8 +1,11 @@
 /**
- * DemoImageAIProvider — procedurally paints a cover background on a canvas.
- * Deterministic for a given prompt + style, clearly labelled as DEMO in the UI.
+ * Decorative cover backgrounds drawn on a canvas right on the device (no network, no AI service).
+ * The same seed + style + colours always paints the same picture, so "another variant" just changes the seed.
  */
-import { sleep, type ImageAIProvider, type ImageRequest } from './types';
+export type PatternStyle = 'cosmic' | 'landscape' | 'abstract' | 'geometric' | 'watercolor';
+export const PATTERN_STYLES: PatternStyle[] = ['cosmic', 'landscape', 'abstract', 'geometric', 'watercolor'];
+
+export interface PatternRequest { seed: string; style: PatternStyle; colors: [string, string]; width: number; height: number }
 
 function hash(s: string): number {
   let h = 2166136261;
@@ -24,10 +27,10 @@ function mix(a: string, b: string, t: number, alpha = 1): string {
   return `rgba(${Math.round(r1 + (r2 - r1) * t)},${Math.round(g1 + (g2 - g1) * t)},${Math.round(b1 + (b2 - b1) * t)},${alpha})`;
 }
 
-/** Paints the procedural artwork. Exported for reuse/testing. */
-export function paintDemoArt(ctx: CanvasRenderingContext2D, req: Pick<ImageRequest, 'prompt' | 'style' | 'colors' | 'width' | 'height'>): void {
+/** Paints a decorative pattern background. Deterministic for the same seed, style and colours. */
+export function paintPattern(ctx: CanvasRenderingContext2D, req: PatternRequest): void {
   const { width: w, height: h, colors: [c1, c2], style } = req;
-  const r = rng(hash(`${req.prompt}|${style}|${c1}${c2}`));
+  const r = rng(hash(`${req.seed}|${style}|${c1}${c2}`));
   const g = ctx.createLinearGradient(0, 0, w * 0.3, h);
   g.addColorStop(0, c1); g.addColorStop(1, c2);
   ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
@@ -105,21 +108,12 @@ export function paintDemoArt(ctx: CanvasRenderingContext2D, req: Pick<ImageReque
   ctx.putImageData(img, 0, 0);
 }
 
-export class DemoImageAIProvider implements ImageAIProvider {
-  readonly id = 'demo-image';
-  readonly isDemo = true;
-  constructor(private latency = 1200) {}
 
-  private async render(req: ImageRequest): Promise<Blob> {
-    await sleep(this.latency, req.signal);
-    const canvas = document.createElement('canvas');
-    canvas.width = req.width; canvas.height = req.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Canvas is not supported');
-    paintDemoArt(ctx, req);
-    return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', 0.9));
-  }
-
-  generateCover(req: ImageRequest) { return this.render(req); }
-  generateIllustration(req: ImageRequest) { return this.render({ ...req, height: Math.round(req.width * 0.66) }); }
+export function patternBlob(req: PatternRequest): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = req.width; canvas.height = req.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return Promise.reject(new Error('Canvas is not supported'));
+  paintPattern(ctx, req);
+  return new Promise((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', 0.9));
 }

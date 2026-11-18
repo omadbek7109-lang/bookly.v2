@@ -2,11 +2,17 @@
 import type { Locale } from '../../i18n';
 
 export type ThemePref = 'system' | 'light' | 'dark';
+/** Interface design (colour style of the whole app). */
+export type Skin = 'bookly' | 'ocean' | 'forest' | 'sunset' | 'paper' | 'graphite';
+export const SKINS: Skin[] = ['bookly', 'ocean', 'forest', 'sunset', 'paper', 'graphite'];
+export type Corners = 'round' | 'soft' | 'sharp';
 export type ExportFormat = 'pdf' | 'pptx' | 'epub' | 'docx';
 
 export interface Settings {
   locale: Locale;
   theme: ThemePref;
+  skin: Skin;
+  corners: Corners;
   introSeen: boolean;
   reducedMotion: boolean;
   defaultExport: ExportFormat;
@@ -26,6 +32,8 @@ export const SETTINGS_KEY = 'bookly.settings';
 export const DEFAULT_SETTINGS: Settings = {
   locale: 'uz',
   theme: 'system',
+  skin: 'bookly',
+  corners: 'round',
   introSeen: false,
   reducedMotion: false,
   defaultExport: 'pdf',
@@ -41,7 +49,10 @@ export const DEFAULT_SETTINGS: Settings = {
 export function loadSettings(): Settings {
   try {
     const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
-    return { ...DEFAULT_SETTINGS, ...raw, reader: { ...DEFAULT_SETTINGS.reader, ...(raw.reader || {}) }, profile: { ...DEFAULT_SETTINGS.profile, ...(raw.profile || {}) } };
+    const merged = { ...DEFAULT_SETTINGS, ...raw };
+    if (!SKINS.includes(merged.skin)) merged.skin = 'bookly';
+    if (!['round', 'soft', 'sharp'].includes(merged.corners)) merged.corners = 'round';
+    return { ...merged, reader: { ...DEFAULT_SETTINGS.reader, ...(raw.reader || {}) }, profile: { ...DEFAULT_SETTINGS.profile, ...(raw.profile || {}) } };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

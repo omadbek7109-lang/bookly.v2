@@ -7,6 +7,7 @@ import type { Locale } from '../../i18n';
 import { isSingleText } from '../../models/book';
 import { createBackup, restoreBackup } from '../../services/storage/backup';
 import { WipeSheet } from './WipeSheet';
+import { SkinPicker } from './SkinPicker';
 import { navigate, routes } from '../../app/router';
 import { storageEstimate } from '../../services/storage/db';
 import { assets } from '../../services/storage/repository';
@@ -101,6 +102,7 @@ export default function ProfilePage() {
             { value: 'system', label: t('profile.theme.system'), icon: 'monitor' }, { value: 'light', label: t('profile.theme.light'), icon: 'sun' }, { value: 'dark', label: t('profile.theme.dark'), icon: 'moon' },
           ]} />
         </Field>
+        <SkinPicker />
         <Switch id="rm" label={t('profile.reducedMotion')} checked={settings.reducedMotion} onChange={(v) => update({ reducedMotion: v })} />
         <p className="muted small setting-hint">{t('profile.reducedMotionHint')}</p>
       </div>

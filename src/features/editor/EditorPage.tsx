@@ -11,8 +11,7 @@ import type { MessageKey } from '../../i18n';
 import { books } from '../../services/storage/repository';
 import { syncCoverText } from '../../services/cover/renderCover';
 import { plainText, sanitizeInline, textToInline } from '../../utils/inline';
-import { AssistantSheet, type ApplyMode, type AssistantTarget } from '../ai-assistant/AssistantSheet';
-import { useWritingAssistant } from '../ai-assistant/useAssistant';
+import { BookStyleSheet } from './BookStyleSheet';
 import { chapterLabel } from '../../services/export/common';
 import { ChapterContent } from '../reader/BookContent';
 import { BlockView, placeCaret, type BlockHandlers } from './blocks';
@@ -42,7 +41,7 @@ export default function EditorPage({ bookId }: { bookId: string }) {
   return <Editor initial={state.book} />;
 }
 
-type SheetName = null | 'chapters' | 'format' | 'insert' | 'assistant' | 'block' | 'details' | 'preview';
+type SheetName = null | 'chapters' | 'format' | 'insert' | 'style' | 'block' | 'details' | 'preview';
 
 interface InsertItem { id: string; type: BlockType; icon: IconName; label: MessageKey; hint: MessageKey; init?: Partial<Block> }
 /** The "+" menu: the five everyday blocks first, the rest behind "Boshqa bloklar". */
@@ -83,10 +82,7 @@ function Editor({ initial }: { initial: Book }) {
   const [menuBlock, setMenuBlock] = useState<string | null>(null);
   const els = useRef(new Map<string, HTMLElement>());
   const focusReq = useRef<{ id: string; where: 'start' | 'end' } | null>(null);
-  const savedRange = useRef<{ range: Range; blockId: string; text: string } | null>(null);
-  const [assistTarget, setAssistTarget] = useState<AssistantTarget | null>(null);
   const [moreInserts, setMoreInserts] = useState(false);
-  const ai = useWritingAssistant();
   const single = isSingleText(book);
 
   useEffect(() => { if (chapter.id !== chapterId) setChapterId(chapter.id); }, [chapter.id, chapterId]);
@@ -239,68 +235,11 @@ function Editor({ initial }: { initial: Book }) {
     const c = [...b.chapters]; [c[i], c[j]] = [c[j], c[i]]; return { ...b, chapters: c };
   });
 
-  // ---------------------------------------------------------------- format & assistant
+  // ---------------------------------------------------------------- format
   const exec = (cmd: 'bold' | 'italic' | 'underline') => {
     document.execCommand(cmd);
     const el = active ? els.current.get(active) : null;
     el?.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-
-  const openAssistant = () => {
-    const sel = window.getSelection();
-    savedRange.current = null;
-    let selection: string | null = null;
-    const el = active ? els.current.get(active) : null;
-    if (sel && sel.rangeCount && !sel.isCollapsed && el && el.contains(sel.anchorNode)) {
-      selection = sel.toString();
-      savedRange.current = { range: sel.getRangeAt(0).cloneRange(), blockId: active!, text: selection };
-    }
-    const blk = chapter.blocks.find((x) => x.id === active);
-    setAssistTarget({
-      selection, blockText: blk ? blockText(blk) : '', hasBlock: !!blk, chapterTitle: single ? '' : chapter.title, bookTitle: book.title, language: book.language, single,
-    });
-    setSheet('assistant');
-  };
-
-  const applyAssistant = (mode: ApplyMode, text: string) => {
-    const blk = chapter.blocks.find((x) => x.id === active);
-    if (mode === 'title') {
-      if (single) {
-        const hb = createBlock('heading', { level: 1, html: textToInline(text) });
-        setBlocks((bs) => { const c = [...bs]; c.splice(blk ? Math.max(0, bs.findIndex((x) => x.id === blk.id)) : 0, 0, hb); return c; });
-      }
-      else update((b) => ({ ...b, chapters: b.chapters.map((c) => (c.id === chapterId ? { ...c, title: text } : c)) }));
-      toast(t('assistant.applied'), 'success');
-      return;
-    }
-    const paragraphs = () => text.split(/\n{2,}|\n(?=—)/).map((x) => x.trim()).filter(Boolean).map((x) => createBlock('paragraph', { html: textToInline(x) }));
-    if (mode === 'insert' || !blk) {
-      const nbs = paragraphs();
-      if (!nbs.length) return;
-      setBlocks((bs) => {
-        const i = blk ? bs.findIndex((x) => x.id === blk.id) : bs.length - 1;
-        const c = [...bs];
-        // an empty paragraph under the cursor is filled instead of leaving a blank line
-        if (blk && isEmptyText(blk)) c.splice(i, 1, ...nbs); else c.splice(i + 1, 0, ...nbs);
-        return c;
-      });
-      toast(t('assist.inserted'), 'success');
-      return;
-    }
-    // replace — selection-level when possible, otherwise the whole block
-    const sr = savedRange.current;
-    const el = els.current.get(blk.id);
-    if (sr && sr.blockId === blk.id && el?.isContentEditable) {
-      setTimeout(() => {
-        el.focus();
-        const s = window.getSelection();
-        s?.removeAllRanges(); s?.addRange(sr.range);
-        document.execCommand('insertText', false, text);
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-      }, 60);
-    } else if (isText(blk)) replaceBlock({ ...blk, html: textToInline(text) });
-    else if (blk.type === 'list') replaceBlock({ ...blk, items: text.split('\n').filter(Boolean).map(textToInline) });
-    toast(t('assist.replaced'), 'success');
   };
 
   // ---------------------------------------------------------------- book structure (chapters ⇄ one continuous text)
@@ -398,9 +337,7 @@ function Editor({ initial }: { initial: Book }) {
         <button type="button" className="tb-btn tb-icon keep-focus" onClick={() => exec('underline')} aria-label={t('editor.underlineU')} title={t('editor.underline')} data-testid="fmt-underline"><Icon name="underline" size={20} /></button>
         <span className="tb-sep" />
         <button type="button" className="tb-btn tb-labeled" onClick={() => setSheet('insert')} data-testid="insert-sheet"><Icon name="plus" size={20} /><span>{t('editor.insert')}</span></button>
-        {(ai.status === 'ready' || ai.status === 'needs-login' || ai.status === 'demo') && (
-          <button type="button" className="tb-btn tb-labeled tb-ai keep-focus" onClick={openAssistant} data-testid="ai-open"><Icon name="sparkles" size={20} /><span>{t('editor.ai')}</span></button>
-        )}
+        <button type="button" className="tb-btn tb-labeled tb-style" onClick={() => setSheet('style')} data-testid="style-open"><Icon name="brush" size={20} /><span>{t('editor.style')}</span></button>
       </nav>
 
       {/* ---------------------------------------------------------- sheets */}
@@ -456,7 +393,7 @@ function Editor({ initial }: { initial: Book }) {
         </div>
       </Sheet>
 
-      {assistTarget && <AssistantSheet open={sheet === 'assistant'} onClose={() => setSheet(null)} target={assistTarget} onApply={applyAssistant} assistant={ai.assistant} status={ai.status} />}
+      <BookStyleSheet open={sheet === 'style'} onClose={() => setSheet(null)} book={book} onChange={(fn) => update(fn, 'style')} />
     </div>
   );
 }

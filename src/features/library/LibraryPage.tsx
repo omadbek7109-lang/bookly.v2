@@ -100,7 +100,7 @@ export default function LibraryPage({ onCreate }: { onCreate: () => void }) {
 
       {ready && list.length === 0 ? (
         <EmptyState icon={tab === 'trash' ? 'trash' : filtered ? 'search' : 'bookOpen'} title={empty.title} text={empty.text}
-          action={!filtered && tab === 'all' ? <Button icon="sparkles" onClick={() => navigate(routes.create())}>{t('home.empty.cta')}</Button> : undefined} />
+          action={!filtered && tab === 'all' ? <Button icon="plus" onClick={() => navigate(routes.create())}>{t('home.empty.cta')}</Button> : undefined} />
       ) : (
         <ul className="book-list" data-testid="book-list">
           {list.map((b) => <BookRow key={b.id} book={b} onMenu={() => setMenu(b)} />)}

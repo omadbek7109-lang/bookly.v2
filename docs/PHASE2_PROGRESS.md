@@ -114,3 +114,16 @@ Measured with `npm run perf:heat` (Chrome counters + all-thread trace, CPU slowe
 - [x] Reader re-renders only when the shown percent changes; `--kb` only written when it changes;
       hero carousel pauses when the app is in the background.
 - [x] Tests: unit 67/67 (word-count cache), e2e 37/37 (new battery test fails on the old code).
+
+## No-AI book studio, interface designs, polish (2026-11-19)
+- [x] Everything that needed an AI API or a paid service is gone from the app: AI assistant (editor), AI book generator,
+      AI cover image, "AI studio", DEMO badges, AI texts. (The `ai-assist` Edge Function is left deployed but unused.)
+- [x] Book wizard (#/create): title, subtitle, author, category, language → chapters or one text with editable chapter
+      plans → design with a recommended template. Nothing is written for the author.
+- [x] Editor "Style" sheet: design template, heading/body fonts, accent colour, text size — used by preview, reader
+      and every export.
+- [x] Cover "Pattern" tab: decorative backgrounds drawn on the device (former demo generator, now honestly labelled).
+- [x] Interface designs in Profile → Settings: Bookly, Ocean, Forest, Sunset, Paper, Graphite × light/dark,
+      plus corner style (round/soft/sharp); applied before first paint; Telegram header follows the design.
+- [x] Fixes: scrollable tab rows fade instead of clipping, page titles scale on narrow phones, wizard is full-screen,
+      home declutter (duplicate quick-start section removed), version 2.1.0.

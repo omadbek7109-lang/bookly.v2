@@ -1,6 +1,6 @@
 {
   "name": "bookly",
-  "version": "2.0.0-phase1",
+  "version": "2.1.0",
   "private": true,
   "description": "Bookly 2.0 — AI yordamida elektron kitob yaratish platformasi (mobile-first, Telegram Mini App mos)",
   "type": "module",

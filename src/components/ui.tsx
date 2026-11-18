@@ -26,10 +26,6 @@ export function IconButton({ icon, label, active, className = '', size = 22, ...
   );
 }
 
-export function DemoBadge({ title }: { title?: string }) {
-  return <span className="demo-badge" title={title}>DEMO</span>;
-}
-
 export function Spinner({ label }: { label?: string }) {
   return <span className="spinner-wrap" role="status"><span className="spinner" aria-hidden="true" />{label && <span>{label}</span>}</span>;
 }

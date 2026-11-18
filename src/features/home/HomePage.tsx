@@ -14,10 +14,10 @@ function greetingKey(): MessageKey {
   return h < 5 ? 'home.greeting.night' : h < 12 ? 'home.greeting.morning' : h < 18 ? 'home.greeting.day' : h < 23 ? 'home.greeting.evening' : 'home.greeting.night';
 }
 
-const HERO: { badge: MessageKey; title: MessageKey; text: MessageKey; cta: MessageKey; to: string; art: 'books' | 'cover' | 'export' }[] = [
-  { badge: 'home.hero1.badge', title: 'home.hero1.title', text: 'home.hero1.text', cta: 'home.hero1.cta', to: routes.create(), art: 'books' },
-  { badge: 'home.hero2.badge', title: 'home.hero2.title', text: 'home.hero2.text', cta: 'home.hero2.cta', to: routes.cover(), art: 'cover' },
-  { badge: 'home.hero3.badge', title: 'home.hero3.title', text: 'home.hero3.text', cta: 'home.hero3.cta', to: routes.export(), art: 'export' },
+const HERO: { badge: MessageKey; title: MessageKey; text: MessageKey; cta: MessageKey; to: string; art: 'books' | 'cover' | 'export'; icon: IconName }[] = [
+  { badge: 'home.hero1.badge', title: 'home.hero1.title', text: 'home.hero1.text', cta: 'home.hero1.cta', to: routes.create(), art: 'books', icon: 'feather' },
+  { badge: 'home.hero2.badge', title: 'home.hero2.title', text: 'home.hero2.text', cta: 'home.hero2.cta', to: routes.cover(), art: 'cover', icon: 'image' },
+  { badge: 'home.hero3.badge', title: 'home.hero3.title', text: 'home.hero3.text', cta: 'home.hero3.cta', to: routes.export(), art: 'export', icon: 'download' },
 ];
 
 export function HomePage({ onCreate }: { onCreate: () => void }) {
@@ -40,7 +40,7 @@ export function HomePage({ onCreate }: { onCreate: () => void }) {
 
   const qa: { icon: IconName; label: MessageKey; run: () => void; testId: string }[] = [
     { icon: 'plus', label: 'home.qa.new', run: onCreate, testId: 'qa-new' },
-    { icon: 'sparkles', label: 'home.qa.studio', run: () => navigate(routes.studio()), testId: 'qa-studio' },
+    { icon: 'list', label: 'home.qa.wizard', run: () => navigate(routes.create()), testId: 'qa-wizard' },
     { icon: 'layers', label: 'home.qa.templates', run: () => navigate(routes.templates()), testId: 'qa-templates' },
     { icon: 'image', label: 'home.qa.cover', run: () => navigate(routes.cover()), testId: 'qa-cover' },
     { icon: 'bookOpen', label: 'home.qa.library', run: () => navigate(routes.books()), testId: 'qa-library' },
@@ -75,7 +75,7 @@ export function HomePage({ onCreate }: { onCreate: () => void }) {
       </div>
 
       {ready && live.length === 0 && (
-        <EmptyState title={t('home.empty.title')} text={t('home.empty.text')} action={<Button icon="sparkles" onClick={() => navigate(routes.create())}>{t('home.empty.cta')}</Button>} />
+        <EmptyState title={t('home.empty.title')} text={t('home.empty.text')} action={<Button icon="plus" onClick={() => navigate(routes.create())} data-testid="empty-create">{t('home.empty.cta')}</Button>} />
       )}
 
       {continueBook && (
@@ -111,14 +111,6 @@ export function HomePage({ onCreate }: { onCreate: () => void }) {
         </>
       )}
 
-      <SectionTitle>{t('home.quick')}</SectionTitle>
-      <div className="quick-grid">
-        <QuickCard icon="zap" tone="violet" title={t('home.quick.topic')} text={t('home.quick.topicDesc')} onClick={() => navigate(routes.create())} />
-        <QuickCard icon="sparkles" tone="indigo" title={t('home.quick.write')} text={t('home.quick.writeDesc')} onClick={() => continueBook ? navigate(routes.editor(continueBook.id)) : onCreate()} />
-        <QuickCard icon="image" tone="blue" title={t('home.quick.cover')} text={t('home.quick.coverDesc')} onClick={() => navigate(routes.cover())} />
-        <QuickCard icon="file" tone="rose" title={t('home.quick.export')} text={t('home.quick.exportDesc')} onClick={() => navigate(routes.export())} />
-      </div>
-
       {live.length > 0 && (
         <>
           <SectionTitle>{t('home.stats')}</SectionTitle>
@@ -138,15 +130,6 @@ export function HomePage({ onCreate }: { onCreate: () => void }) {
 
 function Stat({ value, label }: { value: number | string; label: string }) {
   return <div className="stat glass"><strong>{value}</strong><span>{label}</span></div>;
-}
-
-function QuickCard({ icon, tone, title, text, onClick }: { icon: IconName; tone: string; title: string; text: string; onClick: () => void }) {
-  return (
-    <button type="button" className="quick-card glass" onClick={onClick}>
-      <span className={`quick-icon tone-${tone}`}><Icon name={icon} size={24} /></span>
-      <span className="quick-text"><strong>{title}</strong><small>{text}</small></span>
-    </button>
-  );
 }
 
 export function BookTile({ book, onMenu }: { book: Book; onMenu: () => void }) {
@@ -200,7 +183,7 @@ function HeroCarousel() {
         {HERO.map((h, k) => (
           <article key={h.badge} className="hero-slide" aria-roledescription="slide" aria-label={`${k + 1} / ${HERO.length}`} aria-hidden={k !== i}>
             <div className="hero-copy">
-              <span className="chip"><Icon name="sparkles" size={15} /> {t(h.badge)}</span>
+              <span className="chip"><Icon name={h.icon} size={15} /> {t(h.badge)}</span>
               <h2>{t(h.title)}</h2>
               <p>{t(h.text)}</p>
               <Button variant="primary" className="hero-cta" iconRight="arrowRight" onClick={() => navigate(h.to)} tabIndex={k === i ? 0 : -1} data-testid={k === 0 ? 'hero-cta' : undefined}>{t(h.cta)}</Button>
@@ -220,12 +203,12 @@ function HeroArt({ kind }: { kind: 'books' | 'cover' | 'export' }) {
   if (kind === 'cover') {
     return (
       <svg className="hero-art" viewBox="0 0 200 180" aria-hidden="true">
-        <defs><linearGradient id="hc1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#8b5cf6" /><stop offset="1" stopColor="#312e81" /></linearGradient></defs>
+        <defs><linearGradient id="hc1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style={{ stopColor: 'var(--violet)' }} /><stop offset="1" style={{ stopColor: 'var(--indigo-deep)' }} /></linearGradient></defs>
         <rect x="58" y="18" width="96" height="140" rx="8" fill="url(#hc1)" transform="rotate(8 106 88)" opacity=".55" />
         <rect x="50" y="22" width="96" height="140" rx="8" fill="url(#hc1)" />
-        <circle cx="120" cy="52" r="26" fill="#c4b5fd" opacity=".35" />
+        <circle cx="120" cy="52" r="26" style={{ fill: 'var(--lavender)' }} opacity=".35" />
         <rect x="66" y="96" width="64" height="8" rx="4" fill="#fff" opacity=".9" /><rect x="74" y="110" width="48" height="5" rx="2.5" fill="#fff" opacity=".55" />
-        <path d="M166 40l4 10 10 4-10 4-4 10-4-10-10-4 10-4z" fill="#e9d5ff" />
+        <path d="M166 40l4 10 10 4-10 4-4 10-4-10-10-4 10-4z" style={{ fill: 'var(--lavender)' }} />
       </svg>
     );
   }
@@ -234,33 +217,33 @@ function HeroArt({ kind }: { kind: 'books' | 'cover' | 'export' }) {
       <svg className="hero-art" viewBox="0 0 200 180" aria-hidden="true">
         {[['PDF', '#e11d48', 30], ['EPUB', '#7c3aed', 70], ['DOCX', '#2563eb', 110], ['PPTX', '#ea580c', 150]].map(([l, c, x]) => (
           <g key={l as string} transform={`translate(${(x as number) - 22} ${(x as number) === 70 || (x as number) === 150 ? 70 : 40})`}>
-            <rect width="44" height="56" rx="7" fill="#1e1b4b" stroke={c as string} strokeWidth="2" />
+            <rect width="44" height="56" rx="7" style={{ fill: 'var(--indigo-deep)' }} stroke={c as string} strokeWidth="2" />
             <text x="22" y="34" fill="#fff" fontSize="11" fontWeight="700" textAnchor="middle" fontFamily="system-ui">{l as string}</text>
           </g>
         ))}
-        <path d="M100 150v-24m0 24-10-10m10 10 10-10" stroke="#c4b5fd" strokeWidth="4" strokeLinecap="round" fill="none" />
+        <path d="M100 150v-24m0 24-10-10m10 10 10-10" style={{ stroke: 'var(--lavender)' }} strokeWidth="4" strokeLinecap="round" fill="none" />
       </svg>
     );
   }
   return (
     <svg className="hero-art" viewBox="0 0 200 180" aria-hidden="true">
       <defs>
-        <linearGradient id="hb1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#a78bfa" /><stop offset="1" stopColor="#4338ca" /></linearGradient>
-        <linearGradient id="hb2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#ede9fe" /><stop offset="1" stopColor="#c4b5fd" /></linearGradient>
+        <linearGradient id="hb1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style={{ stopColor: 'var(--lavender)' }} /><stop offset="1" style={{ stopColor: 'var(--indigo)' }} /></linearGradient>
+        <linearGradient id="hb2" x1="0" y1="0" x2="1" y2="0"><stop offset="0" style={{ stopColor: '#ffffff' }} /><stop offset="1" style={{ stopColor: 'var(--lavender)' }} /></linearGradient>
         <filter id="hglow"><feGaussianBlur stdDeviation="6" /></filter>
       </defs>
-      <ellipse cx="108" cy="150" rx="78" ry="12" fill="#8b5cf6" opacity=".45" filter="url(#hglow)" />
+      <ellipse cx="108" cy="150" rx="78" ry="12" style={{ fill: 'var(--violet)' }} opacity=".45" filter="url(#hglow)" />
       <path d="M28 128l84-28 70 22-84 30z" fill="url(#hb1)" />
       <path d="M28 128l84-28v10l-84 28z" fill="url(#hb2)" />
       <path d="M38 106l84-28 64 20-84 30z" fill="url(#hb1)" opacity=".95" />
       <path d="M38 106l84-28v10l-84 28z" fill="url(#hb2)" />
-      <path d="M72 130l-6 22 8-6 6 7 2-24z" fill="#f0abfc" />
-      <g transform="rotate(-10 128 52)">
-        <rect x="96" y="22" width="64" height="58" rx="14" fill="#6d28d9" />
-        <rect x="96" y="22" width="64" height="58" rx="14" fill="none" stroke="#c4b5fd" strokeWidth="2" />
-        <text x="128" y="63" fill="#fff" fontSize="30" fontWeight="800" fontStyle="italic" textAnchor="middle" fontFamily="system-ui, sans-serif">AI</text>
+      <path d="M72 130l-6 22 8-6 6 7 2-24z" style={{ fill: 'var(--pink)' }} />
+      <g transform="rotate(28 136 50)">
+        <path d="M128 8c14 10 18 34 8 62l-8 10-8-10c-10-28-6-52 8-62z" fill="url(#hb2)" />
+        <path d="M128 14v62" stroke="url(#hb1)" strokeWidth="3" strokeLinecap="round" />
+        <path d="M122 80l6 16 6-16z" style={{ fill: 'var(--primary-2)' }} />
       </g>
-      <path d="M58 30l3 8 8 3-8 3-3 8-3-8-8-3 8-3zM176 96l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" fill="#e9d5ff" />
+      <path d="M58 30l3 8 8 3-8 3-3 8-3-8-8-3 8-3zM176 96l2 5 5 2-5 2-2 5-2-5-5-2 5-2z" style={{ fill: 'var(--lavender)' }} />
     </svg>
   );
 }
@@ -268,10 +251,10 @@ function HeroArt({ kind }: { kind: 'books' | 'cover' | 'export' }) {
 export function LogoMark({ size = 30 }: { size?: number }) {
   return (
     <svg viewBox="0 0 64 64" width={size} height={size} aria-hidden="true">
-      <defs><linearGradient id="lmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#a5b4fc" /><stop offset="1" stopColor="#6366f1" /></linearGradient></defs>
+      <defs><linearGradient id="lmg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style={{ stopColor: 'var(--lavender)' }} /><stop offset="1" style={{ stopColor: 'var(--indigo)' }} /></linearGradient></defs>
       <path d="M8 18c8-4 16-4 24 1v32c-8-5-16-5-24-1z" fill="url(#lmg)" />
-      <path d="M56 18c-8-4-16-4-24 1v32c8-5 16-5 24-1z" fill="#c7d2fe" />
-      <path d="M32 19v32" stroke="#312e81" strokeWidth="2" />
+      <path d="M56 18c-8-4-16-4-24 1v32c8-5 16-5 24-1z" style={{ fill: 'color-mix(in srgb, var(--lavender) 60%, #fff)' }} />
+      <path d="M32 19v32" style={{ stroke: 'var(--indigo-deep)' }} strokeWidth="2" />
     </svg>
   );
 }

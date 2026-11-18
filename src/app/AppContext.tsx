@@ -30,13 +30,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const resolvedTheme: 'light' | 'dark' = settings.theme === 'system' ? (systemDark ? 'dark' : 'light') : settings.theme;
 
   useEffect(() => {
-    document.documentElement.dataset.theme = resolvedTheme;
-    document.documentElement.lang = settings.locale;
-    document.documentElement.classList.toggle('reduce-motion', settings.reducedMotion);
-    const bg = resolvedTheme === 'dark' ? '#0d0e2b' : '#f7f5fb';
+    const root = document.documentElement;
+    root.dataset.theme = resolvedTheme;
+    root.dataset.skin = settings.skin;
+    root.dataset.corners = settings.corners;
+    root.lang = settings.locale;
+    root.classList.toggle('reduce-motion', settings.reducedMotion);
+    // Telegram's header and the browser bar follow the chosen design's background colour.
+    const bg = getComputedStyle(root).getPropertyValue('--bg').trim() || (resolvedTheme === 'dark' ? '#0d0e2b' : '#f7f5fb');
     document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute('content', bg));
     syncTelegramColors(bg);
-  }, [resolvedTheme, settings.locale, settings.reducedMotion]);
+  }, [resolvedTheme, settings.locale, settings.reducedMotion, settings.skin, settings.corners]);
 
   const update = useCallback((patch: Partial<Settings> | ((s: Settings) => Partial<Settings>)) => {
     setSettings((s) => {

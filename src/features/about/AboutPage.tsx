@@ -7,19 +7,21 @@ import type { MessageKey } from '../../i18n';
 declare const __BOOKLY_VERSION__: string;
 
 /** Feature status is stated honestly: what works today, what is a demo, what needs a server connection. */
-type Status = 'available' | 'demo' | 'needsSetup';
+/** Everything listed here works today, on the device, without any paid service. */
+type Status = 'available';
 const FEATURES: { key: string; icon: IconName; status: Status }[] = [
-  { key: 'aiCreator', icon: 'sparkles', status: 'demo' },
+  { key: 'wizard', icon: 'list', status: 'available' },
   { key: 'editor', icon: 'edit', status: 'available' },
+  { key: 'style', icon: 'brush', status: 'available' },
   { key: 'cover', icon: 'image', status: 'available' },
   { key: 'preview', icon: 'eye', status: 'available' },
   { key: 'export', icon: 'download', status: 'available' },
   { key: 'library', icon: 'book', status: 'available' },
+  { key: 'skins', icon: 'palette', status: 'available' },
   { key: 'languages', icon: 'globe', status: 'available' },
-  { key: 'layouts', icon: 'list', status: 'available' },
+  { key: 'layouts', icon: 'layers', status: 'available' },
   { key: 'backup', icon: 'shield', status: 'available' },
   { key: 'telegram', icon: 'send', status: 'available' },
-  { key: 'aiAssistant', icon: 'feather', status: 'needsSetup' },
 ];
 const PLANNED = ['realAi', 'collab', 'publish'] as const;
 

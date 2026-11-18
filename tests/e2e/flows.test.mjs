@@ -21,7 +21,7 @@ before(async () => {
   // Served exactly like GitHub Pages: https://<user>.github.io/bookly.v2/
   server = await startServer(path.join(ROOT, 'dist'), 0, { base: SITE_BASE });
   origin = `http://127.0.0.1:${server.address().port}`;
-  base = `${origin}${SITE_BASE}?fastAI=1`;
+  base = `${origin}${SITE_BASE}?x=1`;
   browser = await chromium.launch({ executablePath: exe, args: ['--no-sandbox'] });
 });
 after(async () => { await browser?.close(); server?.close(); });
@@ -38,15 +38,26 @@ async function newPage({ width = 390, height = 844, intro = false, scheme = 'dar
 
 const go = (page, hash) => page.evaluate((h) => { location.hash = h; }, hash);
 
-async function createAiBook(page, topic = 'Moliyaviy savodxonlik', chapters = 3) {
-  await go(page, '#/create');
-  await page.fill('[data-testid=creator-topic]', topic);
-  await page.locator('[data-testid=creator-chapters]').fill(String(chapters));
-  await page.click('[data-testid=creator-outline]');
-  await page.waitForSelector('[data-testid=outline-list] li');
-  await page.click('[data-testid=creator-write]');
-  await page.waitForFunction(() => document.querySelectorAll('.gen-item.is-done').length === document.querySelectorAll('.gen-item').length, null, { timeout: 15000 });
-  await page.click('[data-testid=creator-save-edit]');
+/** A realistic book text: headings, paragraphs, a list and a quote in every chapter (Markdown-like TXT). */
+export function sampleBookText(title, chapters = 3) {
+  const para = (c, k) => `${title} haqida ${c}-bobning ${k}-paragrafi. Kitob yozish — fikrni tartibga solish, so‘zlarni tanlash va o‘quvchini bir sahifadan keyingisiga olib o‘tish san’ati. `
+    + 'Har bir bob aniq maqsad bilan boshlanadi va amaliy misollar bilan davom etadi; shuning uchun matn qisqa jumlalar, ravon o‘tishlar va tushunarli xulosalarga tayanadi. '
+    + 'Yaxshi kitob o‘quvchiga hurmat bilan yoziladi: u savol beradi, javob izlaydi va eng muhim g‘oyani esda qoladigan qilib takrorlaydi.';
+  const out = [`# ${title}`, ''];
+  for (let c = 1; c <= chapters; c++) {
+    out.push(`# ${c}-bob. ${['Kirish', 'Asosiy g‘oya', 'Amaliyot', 'Tajriba', 'Xulosa', 'Qo‘shimcha'][(c - 1) % 6]}`, '');
+    out.push(para(c, 1), '', `## Muhim jihatlar`, '', para(c, 2), '', '- Aniq maqsad qo‘ying', '- Har kuni ozgina yozing', '- Natijani qayta o‘qing', '');
+    out.push('> Har bir katta ish kichik qadamdan boshlanadi.', '', para(c, 3), '', para(c, 4), '', '## Amaliy misol', '', para(c, 5), '', para(c, 6), '');
+  }
+  return out.join('\n');
+}
+
+/** Creates a book the way a user would bring existing text in: Import → TXT → Save. Returns the book id. */
+async function createBookFromText(page, title = 'Moliyaviy savodxonlik', chapters = 3) {
+  await go(page, '#/import');
+  await page.setInputFiles('[data-testid=import-input]', { name: `${title}.txt`, mimeType: 'text/plain', buffer: Buffer.from(sampleBookText(title, chapters)) });
+  await page.waitForSelector('[data-testid=import-result]');
+  await page.click('[data-testid=import-save]');
   await page.waitForSelector('[data-testid=editor]');
   return page.evaluate(() => location.hash.split('/')[2].split('?')[0]);
 }
@@ -68,24 +79,61 @@ test('splash intro plays once, can be skipped and is remembered', async () => {
   await ctx.close();
 });
 
-test('AI book creator generates chapter by chapter and saves to library (persists after reload)', async () => {
+test('book wizard: validates, plans chapters, applies a design and saves (persists after reload)', async () => {
   const { ctx, page } = await newPage();
-  // validation
-  await go(page, '#/create');
-  await page.click('[data-testid=creator-outline]');
-  assert.ok(await page.locator('.field-error').count() >= 1, 'empty topic must be rejected');
-  const id = await createAiBook(page, 'Yoshlar uchun moliyaviy savodxonlik', 4);
-  assert.match(id, /^book_/);
-  const chapters = await page.locator('[data-testid=chapter-list] li').count();
-  assert.equal(chapters, 4);
-  assert.ok((await page.locator('[data-testid=blocks] .blk-wrap').count()) > 3, 'generated chapter has blocks');
-  await page.screenshot({ path: path.join(OUT, 'editor.png') });
+  await page.click('[data-testid=fab-create]');
+  await page.click('[data-testid=create-wizard]');
+  await page.waitForSelector('[data-testid=wizard]');
+  assert.equal(await page.locator('.tabbar').count(), 0, 'wizard is full-screen (no tab bar over the form)');
+  await page.click('[data-testid=wizard-next]');
+  assert.ok(await page.locator('.field-error').count() >= 1, 'empty title must be rejected');
+  await page.fill('[data-testid=wizard-title]', 'Yoshlar uchun moliyaviy savodxonlik');
+  await page.fill('[data-testid=wizard-subtitle]', 'Amaliy qo‘llanma');
+  await page.fill('[data-testid=wizard-author]', 'Aziza Karimova');
+  await page.click('[data-testid=wizard-category]');
+  await page.click('[data-testid=wizard-category-opt-finance]');
+  await page.click('[data-testid=wizard-next]');
+  await page.click('[data-testid=wizard-plan-guide]');
+  assert.equal(await page.locator('[data-testid=wizard-chapters] li').count(), 6);
+  await page.locator('[data-testid=wizard-chapters] li input').first().fill('So‘zboshi');
+  await page.click('[data-testid=wizard-add-chapter]');
+  assert.equal(await page.locator('[data-testid=wizard-chapters] li').count(), 7);
+  await page.screenshot({ path: path.join(OUT, 'wizard-structure.png') });
+  await page.click('[data-testid=wizard-next]');
+  await page.waitForSelector('[data-testid=wizard-tpl-executive] em'); // recommended for finance
+  await page.click('[data-testid=wizard-tpl-novel]');
+  await page.screenshot({ path: path.join(OUT, 'wizard-design.png') });
+  await page.click('[data-testid=wizard-create]');
+  await page.waitForSelector('[data-testid=editor]');
+  const id = await page.evaluate(() => location.hash.split('/')[2].split('?')[0]);
+  const read = () => page.evaluate(async (bid) => {
+    const db = await new Promise((r) => { const q = indexedDB.open('bookly'); q.onsuccess = () => r(q.result); });
+    return new Promise((r) => { const q = db.transaction('books').objectStore('books').get(bid); q.onsuccess = () => r(q.result); });
+  }, id);
+  const b = await read();
+  assert.equal(b.title, 'Yoshlar uchun moliyaviy savodxonlik');
+  assert.equal(b.subtitle, 'Amaliy qo‘llanma');
+  assert.equal(b.author, 'Aziza Karimova');
+  assert.equal(b.category, 'finance');
+  assert.equal(b.chapters.length, 7);
+  assert.equal(b.chapters[0].title, 'So‘zboshi');
+  assert.equal(b.theme.templateId, 'novel');
+  assert.equal(b.cover.templateId, 'novel');
+  assert.equal(b.cover.subtitle, 'Amaliy qo‘llanma');
+  assert.equal(b.metadata.source, 'manual');
   await page.reload();
   await page.waitForSelector('[data-testid=editor]');
-  assert.equal(await page.locator('[data-testid=chapter-list] li').count(), 4);
-  await go(page, '#/');
-  await page.waitForSelector('[data-testid=recent-books] .book-tile');
-  await page.screenshot({ path: path.join(OUT, 'home.png'), fullPage: true });
+  assert.equal((await read()).chapters.length, 7);
+  // one continuous text
+  await go(page, '#/create');
+  await page.fill('[data-testid=wizard-title]', 'Esse');
+  await page.click('[data-testid=wizard-next]');
+  await page.click('[data-testid=wizard-mode-single]');
+  assert.equal(await page.locator('[data-testid=wizard-chapters]').count(), 0);
+  await page.click('[data-testid=wizard-next]');
+  await page.click('[data-testid=wizard-create]');
+  await page.waitForSelector('[data-testid=editor]');
+  assert.equal(await page.locator('[data-testid=chapter-title]').count(), 0, 'single text has no chapter title');
   await ctx.close();
 });
 
@@ -155,35 +203,41 @@ test('editor: typing, autosave, split, insert blocks, chapters reorder, undo/red
   await ctx.close();
 });
 
-test('AI writing assistant suggests and only replaces on accept', async () => {
+test('book style: design, fonts, accent and size apply to the preview and are saved', async () => {
   const { ctx, page } = await newPage();
-  await createAiBook(page, 'Vaqtni boshqarish', 3);
-  const para = page.locator('[data-testid=blocks] .blk-paragraph .editable').nth(1);
-  const original = await para.innerText();
-  await para.click();
-  await page.click('[data-testid=ai-open]');
-  await page.click('[data-testid=ai-expand]');
-  await page.waitForSelector('[data-testid=ai-result]');
-  await page.screenshot({ path: path.join(OUT, 'assistant.png') });
-  assert.equal(await para.innerText(), original, 'original preserved before accept');
-  await page.click('[data-testid=ai-reject]');
+  const id = await createBookFromText(page, 'Vaqtni boshqarish', 3);
+  assert.equal(await page.locator('[data-testid=ai-open]').count(), 0, 'no AI button');
+  await page.click('[data-testid=style-open]');
+  await page.waitForSelector('[data-testid=style-sheet]');
+  await page.click('[data-testid=style-tpl-noir]');
+  await page.click('[data-testid=style-hfont-elegant]');
+  await page.click('[data-testid=style-bfont-sans]');
+  await page.click('[data-testid=style-accent-059669]');
+  await page.getByRole('tab', { name: 'Katta', exact: true }).click();
+  await page.screenshot({ path: path.join(OUT, 'style-sheet.png') });
   await page.keyboard.press('Escape');
-  assert.equal(await para.innerText(), original);
-  await para.click();
-  await page.click('[data-testid=ai-open]');
-  await page.click('[data-testid=ai-expand]');
-  await page.waitForSelector('[data-testid=ai-result]');
-  await page.click('[data-testid=ai-accept]');
-  await page.waitForTimeout(300);
-  const changed = await para.innerText();
-  assert.notEqual(changed, original);
-  assert.ok(changed.length > original.length, 'expanded text is longer');
+  await waitSaved(page);
+  const theme = await page.evaluate(async (bid) => {
+    const db = await new Promise((r) => { const q = indexedDB.open('bookly'); q.onsuccess = () => r(q.result); });
+    return new Promise((r) => { const q = db.transaction('books').objectStore('books').get(bid); q.onsuccess = () => r(q.result); });
+  }, id);
+  assert.equal(theme.theme.templateId, 'noir');
+  assert.equal(theme.cover.templateId, 'noir', 'a design also restyles the cover');
+  assert.equal(theme.theme.headingFont, 'elegant');
+  assert.equal(theme.theme.bodyFont, 'sans');
+  assert.equal(theme.theme.accent, '#059669');
+  assert.equal(theme.theme.baseSize, 13);
+  await page.click('[data-testid=editor-preview]');
+  await page.waitForSelector('[data-testid=live-preview] .book-content');
+  const css = await page.$eval('[data-testid=live-preview] .book-content', (e) => ({ accent: e.style.getPropertyValue('--accent'), body: getComputedStyle(e).fontFamily }));
+  assert.equal(css.accent, '#059669');
+  assert.match(css.body, /Inter|Segoe|Roboto|system-ui|sans-serif/);
   await ctx.close();
 });
 
 test('library: search, favorite, duplicate, rename, trash and restore', async () => {
   const { ctx, page } = await newPage();
-  await createAiBook(page, 'Sog‘lom turmush tarzi', 3);
+  await createBookFromText(page, 'Sog‘lom turmush tarzi', 3);
   await go(page, '#/books');
   await page.waitForSelector('[data-testid=book-row]');
   await page.locator('[data-testid=row-menu]').first().click();
@@ -226,7 +280,7 @@ async function download(page, click) {
 
 test('cover designer customises the cover and exports PNG/JPG', async () => {
   const { ctx, page } = await newPage();
-  const id = await createAiBook(page, 'Kosmos sirlari', 3);
+  const id = await createBookFromText(page, 'Kosmos sirlari', 3);
   await go(page, `#/cover/${id}`);
   await page.waitForSelector('[data-testid=cover-canvas]');
   await page.fill('[data-testid=cover-title]', 'Kosmos sirlari: yulduzlar');
@@ -234,9 +288,11 @@ test('cover designer customises the cover and exports PNG/JPG', async () => {
   await page.click('[data-testid=cover-tpl-bold]');
   await page.getByRole('tab', { name: 'Ranglar', exact: true }).click();
   await page.click('[data-testid=palette-sunset]');
-  await page.getByRole('tab', { name: 'AI fon', exact: true }).click();
-  await page.click('[data-testid=cover-ai-generate]');
-  await page.waitForSelector('.cover-ai-tag');
+  await page.getByRole('tab', { name: 'Naqsh', exact: true }).click();
+  await page.click('[data-testid=pattern-geometric]');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=pattern-again] .spinner'));
+  await page.click('[data-testid=pattern-again]');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=pattern-again]')?.hasAttribute('disabled'));
   await page.screenshot({ path: path.join(OUT, 'cover.png') });
   const png = await download(page, () => page.click('[data-testid=cover-png]'));
   assert.ok(png.name.endsWith('.png'));
@@ -252,13 +308,14 @@ test('cover designer customises the cover and exports PNG/JPG', async () => {
   }, id);
   assert.equal(saved.title, 'Kosmos sirlari: yulduzlar');
   assert.equal(saved.templateId, 'bold');
-  assert.equal(saved.aiGenerated, true);
+  assert.equal(saved.background.kind, 'image', 'pattern is stored as the cover background image');
+  assert.ok(saved.background.imageAssetId, 'pattern image asset saved');
   await ctx.close();
 });
 
 test('export center produces valid PDF, EPUB, DOCX and PPTX files; import round-trips', async () => {
   const { ctx, page } = await newPage();
-  const id = await createAiBook(page, 'Raqamli marketing', 3);
+  const id = await createBookFromText(page, 'Raqamli marketing', 3);
   // add an image block so exports include media
   const pngB64 = fs.readFileSync(path.join(OUT, 'cover.png')).toString('base64');
   await page.click('[data-testid=insert-sheet]');
@@ -308,7 +365,7 @@ test('export center produces valid PDF, EPUB, DOCX and PPTX files; import round-
 
 test('reader shows cover, TOC, chapter navigation, typography and progress', async () => {
   const { ctx, page } = await newPage({ scheme: 'light' });
-  const id = await createAiBook(page, 'Bolalar ertaklari', 3);
+  const id = await createBookFromText(page, 'Bolalar ertaklari', 3);
   await go(page, `#/reader/${id}`);
   await page.waitForSelector('[data-testid=reader-start]');
   await page.screenshot({ path: path.join(OUT, 'reader-cover.png') });
@@ -419,49 +476,25 @@ assert.equal(await page.locator('[data-testid=blocks] .blk-heading.lvl-2').count
   await ctx.close();
 });
 
-test('AI yordamchi: hidden when no AI is connected; demo shows the 8 tasks and the 4 choices', async () => {
-  // no ?fastAI / ?demoAI and no server → the AI button is not shown at all
-  const ctx0 = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  const p0 = await ctx0.newPage();
-  await p0.goto(`${origin}${SITE_BASE}?noIntro=1`);
-  await p0.waitForSelector('.home');
-  await p0.click('[data-testid=fab-create]');
-  await p0.click('[data-testid=create-blank]');
-  await p0.click('[data-testid=new-create]');
-  await p0.waitForSelector('[data-testid=editor]');
-  await p0.waitForTimeout(1500);
-  assert.equal(await p0.locator('[data-testid=ai-open]').count(), 0, 'no fake AI button');
-  for (const id of ['fmt-bold', 'fmt-italic', 'fmt-underline', 'insert-sheet']) assert.equal(await p0.locator(`[data-testid=${id}]`).count(), 1, id);
-  await ctx0.close();
-
+test('no AI anywhere: no AI buttons, studio tools and create menu work without any server', async () => {
   const { ctx, page } = await newPage({ width: 360, height: 740 });
-  await createAiBook(page, 'Kitob o‘qish foydasi', 3);
-  const para = page.locator('[data-testid=blocks] .blk-paragraph .editable').nth(1);
-  const original = await para.innerText();
-  await para.click();
-  await page.click('[data-testid=ai-open]');
-  for (const id of ['continue', 'rewrite', 'grammar', 'shorten', 'expand', 'ideas', 'dialog', 'titles']) assert.equal(await page.locator(`[data-testid=ai-${id}]`).count(), 1, `task ${id}`);
-  await page.screenshot({ path: path.join(OUT, 'assistant-tasks-360.png') });
-  await page.click('[data-testid=ai-continue]');
-  await page.waitForSelector('[data-testid=ai-result]');
-  for (const id of ['ai-insert', 'ai-retry', 'ai-copy']) assert.equal(await page.locator(`[data-testid=${id}]`).count(), 1, id);
-  assert.equal(await page.locator('[data-testid=ai-accept]').count(), 0, '"continue" cannot replace');
-  assert.equal(await para.innerText(), original, 'nothing changes before the writer chooses');
-  await page.click('[data-testid=ai-retry]');
-  await page.waitForSelector('[data-testid=ai-result]');
-  const before = await page.locator('[data-testid=blocks] .blk-wrap').count();
-  await page.click('[data-testid=ai-insert]');
-  await page.waitForTimeout(200);
-  assert.ok(await page.locator('[data-testid=blocks] .blk-wrap').count() > before, 'inserted below');
-  assert.equal(await para.innerText(), original, 'insert keeps the original');
-  // title suggestion becomes the chapter title
-  await para.click();
-  await page.click('[data-testid=ai-open]');
-  await page.click('[data-testid=ai-titles]');
-  await page.waitForSelector('[data-testid=ai-title-item]');
-  const pick = (await page.locator('[data-testid=ai-title-item] .list-row-text > span').first().innerText()).trim();
-  await page.locator('[data-testid=ai-title-item]').first().click();
-  assert.equal(await page.locator('[data-testid=chapter-title]').inputValue(), pick);
+  await page.click('[data-testid=fab-create]');
+  await page.waitForSelector('[data-testid=create-wizard]');
+  for (const id of ['create-wizard', 'create-blank', 'create-template', 'create-import']) assert.equal(await page.locator(`[data-testid=${id}]`).count(), 1, id);
+  assert.equal(await page.locator('[data-testid=create-ai]').count(), 0);
+  await page.click('[data-testid=create-blank]');
+  await page.click('[data-testid=new-create]');
+  await page.waitForSelector('[data-testid=editor]');
+  for (const id of ['fmt-bold', 'fmt-italic', 'fmt-underline', 'insert-sheet', 'style-open']) assert.equal(await page.locator(`[data-testid=${id}]`).count(), 1, id);
+  for (const hash of ['#/', '#/studio', '#/books', '#/profile', '#/about', '#/create']) {
+    await go(page, hash);
+    await page.waitForTimeout(250);
+    const txt = await page.evaluate(() => document.body.innerText);
+    assert.ok(!/\bAI\b|DEMO|sun’iy intellekt yordamida/.test(txt.replace('Bookly — Your Story, Your Creation.', '')), `${hash} mentions AI: ${txt.match(/.{0,40}\b(AI|DEMO)\b.{0,40}/)?.[0]}`);
+  }
+  await go(page, '#/studio');
+  await page.click('[data-testid=tool-wizard]');
+  await page.waitForSelector('[data-testid=wizard]');
   await ctx.close();
 });
 
@@ -486,7 +519,7 @@ test('templates: preview and create a book from a template', async () => {
 test('responsive layouts have no horizontal overflow (320 → desktop)', async () => {
   for (const [w, h] of [[320, 640], [360, 740], [390, 844], [430, 932], [768, 1024], [1280, 800]]) {
     const { ctx, page } = await newPage({ width: w, height: h });
-    await createAiBook(page, 'Juda uzun nomli responsive sinov kitobi: boshidan oxirigacha', 3);
+    await createBookFromText(page, 'Juda uzun nomli responsive sinov kitobi: boshidan oxirigacha', 3);
     for (const hash of ['#/', '#/books', '#/studio', '#/templates', '#/profile', '#/export', '#/create', '#/import', '#/about']) {
       await go(page, hash);
       await page.waitForTimeout(250);
@@ -507,7 +540,7 @@ test('responsive layouts have no horizontal overflow (320 → desktop)', async (
 test('custom dropdowns: library sort and category (bottom sheet on phones, popover on desktop, keyboard)', async () => {
   for (const [w, h] of [[360, 740], [390, 844], [430, 932], [1280, 800]]) {
     const { ctx, page } = await newPage({ width: w, height: h });
-    await createAiBook(page, 'Saralash sinovi', 3);
+    await createBookFromText(page, 'Saralash sinovi', 3);
     await go(page, '#/books');
     await page.waitForSelector('[data-testid=book-row]');
     assert.equal(await page.locator('select').count(), 0, 'no native <select> left');
@@ -569,6 +602,43 @@ test('custom dropdowns: library sort and category (bottom sheet on phones, popov
   }
 });
 
+test('interface designs: 6 skins × light/dark, corner styles; saved, applied before first paint, no overflow', async () => {
+  const { ctx, page } = await newPage({ width: 360, height: 740 });
+  await go(page, '#/profile');
+  await page.waitForSelector('[data-testid=skin-picker]');
+  const skins = await page.$$eval('[data-testid^=skin-]', (els) => els.map((e) => e.getAttribute('data-testid')).filter((x) => x !== 'skin-picker').map((x) => x.replace('skin-', '')));
+  assert.deepEqual(skins, ['bookly', 'ocean', 'forest', 'sunset', 'paper', 'graphite']);
+  const seen = new Set();
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate((th) => { const s = JSON.parse(localStorage.getItem('bookly.settings') || '{}'); s.theme = th; localStorage.setItem('bookly.settings', JSON.stringify(s)); }, theme);
+    await page.reload(); await page.waitForSelector('[data-testid=skin-picker]');
+    for (const sk of skins) {
+      await page.click(`[data-testid=skin-${sk}]`);
+      await page.waitForFunction((v) => document.documentElement.dataset.skin === v, sk);
+      const v = await page.evaluate(() => { const cs = getComputedStyle(document.documentElement); return { primary: cs.getPropertyValue('--primary').trim(), bg: cs.getPropertyValue('--bg').trim(), meta: document.querySelector('meta[name="theme-color"]')?.getAttribute('content') }; });
+      assert.equal(v.meta, v.bg, `${sk}/${theme}: browser/Telegram bar follows the design background`);
+      seen.add(`${theme}:${v.primary}:${v.bg}`);
+      assert.equal(await page.getAttribute(`[data-testid=skin-${sk}]`, 'aria-checked'), 'true');
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      assert.ok(overflow <= 1, `${sk}/${theme} overflows by ${overflow}px`);
+    }
+  }
+  assert.equal(seen.size, 12, 'every design looks different in both modes');
+  // corners
+  await page.getByRole('tab', { name: 'To‘g‘ri', exact: true }).click();
+  await page.waitForFunction(() => document.documentElement.dataset.corners === 'sharp');
+  const r = await page.$eval('.skin-card', (e) => parseFloat(getComputedStyle(e).borderTopLeftRadius));
+  assert.ok(r < 5, `sharp corners are small (${r}px)`);
+  // saved and applied before React starts (no flash of the default design)
+  await page.click('[data-testid=skin-forest]');
+  await page.goto(page.url().split('#')[0] + '#/', { waitUntil: 'commit' });
+  const early = await page.evaluate(() => [document.documentElement.dataset.skin, document.documentElement.dataset.corners]);
+  assert.deepEqual(early, ['forest', 'sharp']);
+  await page.waitForSelector('.home');
+  await page.screenshot({ path: path.join(OUT, 'skin-forest-light-360.png') });
+  await ctx.close();
+});
+
 test('About page: opens from profile, shows real feature status in every language', async () => {
   const { ctx, page } = await newPage({ width: 360, height: 740 });
   await go(page, '#/profile');
@@ -577,9 +647,11 @@ test('About page: opens from profile, shows real feature status in every languag
   const text = await page.textContent('[data-testid=about-page]');
   for (const s of ['Bizning maqsadimiz', 'Bookly imkoniyatlari', 'Bizning yondashuvimiz', 'Bizning qarashimiz', 'Biz bilan birga yarating', 'Bookly — Your Story, Your Creation.', 'PDF, EPUB, DOCX va PPTX']) assert.ok(text.includes(s), `missing: ${s}`);
   const status = await page.$$eval('[data-testid=about-features] li', (els) => Object.fromEntries(els.map((e) => [e.querySelector('strong').textContent, e.getAttribute('data-status')])));
-  assert.equal(status['AI Book Creation'], 'demo', 'AI creation is labelled as demo');
-  assert.equal(status['AI yordamchi'], 'needsSetup', 'AI assistant is labelled as not connected');
-  assert.ok(Object.values(status).filter((v) => v === 'available').length >= 7);
+  assert.equal(status['Kitob ustasi'], 'available');
+  assert.equal(status['Interfeys dizaynlari'], 'available');
+  assert.ok(!Object.keys(status).some((k) => /AI/.test(k)), 'no AI feature is advertised');
+  assert.ok(Object.values(status).every((v) => v === 'available'));
+  assert.ok(text.includes('hozircha yo‘q'), 'AI is listed only as planned');
   await page.screenshot({ path: path.join(OUT, 'about-360.png'), fullPage: true });
   for (const [loc, heading] of [['ru', 'Наша цель'], ['en', 'Our mission']]) {
     await page.evaluate((l) => { const s = JSON.parse(localStorage.getItem('bookly.settings') || '{}'); s.locale = l; localStorage.setItem('bookly.settings', JSON.stringify(s)); }, loc);
@@ -600,7 +672,7 @@ test('battery / heat: no endless animations, no live blur, no fixed background; 
     window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = { supportsFiber: true, renderers: new Map(), inject() { return 1; }, onCommitFiberRoot() { window.__commits++; }, onCommitFiberUnmount() {}, onPostCommitFiberRoot() {}, onScheduleFiberRoot() {}, checkDCE() {} };
   });
   await page.reload(); await page.waitForSelector('.home');
-  const id = await createAiBook(page, 'Batareya sinovi', 3);
+  const id = await createBookFromText(page, 'Batareya sinovi', 3);
   const audit = () => page.evaluate(() => {
     const endless = document.getAnimations().filter((a) => a.playState === 'running' && a.effect?.getTiming().iterations === Infinity).map((a) => `${a.animationName} on ${a.effect.target?.getAttribute?.('class')}`);
     const blur = [...document.querySelectorAll('*')].filter((e) => { const c = getComputedStyle(e); return (c.backdropFilter || 'none') !== 'none' || (c.webkitBackdropFilter || 'none') !== 'none'; }).map((e) => e.className);
@@ -618,6 +690,7 @@ test('battery / heat: no endless animations, no live blur, no fixed background; 
   // Reader: 40 scroll events must not mean 40 re-renders of the chapter.
   await go(page, `#/reader/${id}`);
   await page.waitForSelector('.reader-progress');
+  if (await page.locator('[data-testid=reader-start]').count()) await page.click('[data-testid=reader-start]'); // cover page → chapter 1
   await page.waitForTimeout(500);
   const scrollable = await page.evaluate(() => document.documentElement.scrollHeight - innerHeight);
   assert.ok(scrollable > 400, `reader chapter is long enough to scroll (${scrollable}px)`);
@@ -644,7 +717,7 @@ const watchState = (page, sel) => page.evaluate((s) => ({ blur: window.__watch.b
 
 test('dialog inputs keep focus while typing (no keyboard close/reopen): rename prompt and delete-code input', async () => {
   const { ctx, page } = await newPage({ width: 360, height: 640 });
-  await createAiBook(page, 'Klaviatura sinovi', 3);
+  await createBookFromText(page, 'Klaviatura sinovi', 3);
   await go(page, '#/books');
   await page.locator('[data-testid=row-menu]').first().click();
   await page.click('[data-testid=menu-rename]');
@@ -669,7 +742,7 @@ test('dialog inputs keep focus while typing (no keyboard close/reopen): rename p
 
 test('delete all books without an account: random 4-digit code, wrong code keeps data, right code deletes books only', async () => {
   const { ctx, page } = await newPage({ width: 360, height: 640 });
-  await createAiBook(page, 'O‘chiriladigan kitob', 3);
+  await createBookFromText(page, 'O‘chiriladigan kitob', 3);
   // a book with an image, a profile name, avatar and theme that must survive
   await go(page, '#/profile');
   await page.click('[data-testid=profile-edit]');
@@ -795,16 +868,16 @@ test('GitHub Pages layout: base path, assets, deep links, 404 fallback and mobil
     await page.waitForSelector('.home .hero');
     const tabWrap = await page.$$eval('.tab span', (els) => els.filter((e) => e.getBoundingClientRect().height > 20).map((e) => e.textContent));
     assert.deepEqual(tabWrap, [], `tab labels fit on one line at ${w}px`);
-    assert.equal(await page.title(), 'Bookly 2.0 — AI Book Creator');
+    assert.equal(await page.title(), 'Bookly 2.0 — Kitob yaratish studiyasi');
     assert.equal(await page.locator('.qa-tile').count(), 8, 'quick actions rendered');
     assert.ok(await page.locator('.tabbar').isVisible(), 'bottom navigation visible');
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(overflow <= 1, `no horizontal scroll at ${w}px (${overflow})`);
     await page.screenshot({ path: path.join(OUT, `pages-home-${w}.png`) });
-    // interactive: open the create sheet and start an AI book
+    // interactive: open the create sheet and start the book wizard
     await page.click('[data-testid=fab-create]');
-    await page.click('[data-testid=create-ai]');
-    await page.waitForSelector('[data-testid=creator-topic]');
+    await page.click('[data-testid=create-wizard]');
+    await page.waitForSelector('[data-testid=wizard-title]');
     assert.ok(page.url().startsWith(origin + SITE_BASE) && page.url().includes('#/create'), `hash route under base: ${page.url()}`);
     // deep link typed as a path (e.g. shared link) is rescued by 404.html
     await page.goto(`${origin}${SITE_BASE}books`);

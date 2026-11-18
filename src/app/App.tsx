@@ -17,7 +17,7 @@ const PAGE_LOADERS = {
   StudioPage: () => import('../features/studio/StudioPage'),
   TemplatesPage: () => import('../features/templates/TemplatesPage'),
   ProfilePage: () => import('../features/profile/ProfilePage'),
-  CreatorPage: () => import('../features/ai-creator/CreatorPage'),
+  NewBookPage: () => import('../features/wizard/NewBookPage'),
   EditorPage: () => import('../features/editor/EditorPage'),
   ReaderPage: () => import('../features/reader/ReaderPage'),
   CoverPage: () => import('../features/cover-designer/CoverPage'),
@@ -38,7 +38,7 @@ const LibraryPage = lazy(PAGE_LOADERS.LibraryPage);
 const StudioPage = lazy(PAGE_LOADERS.StudioPage);
 const TemplatesPage = lazy(PAGE_LOADERS.TemplatesPage);
 const ProfilePage = lazy(PAGE_LOADERS.ProfilePage);
-const CreatorPage = lazy(PAGE_LOADERS.CreatorPage);
+const NewBookPage = lazy(PAGE_LOADERS.NewBookPage);
 const EditorPage = lazy(PAGE_LOADERS.EditorPage);
 const ReaderPage = lazy(PAGE_LOADERS.ReaderPage);
 const CoverPage = lazy(PAGE_LOADERS.CoverPage);
@@ -56,14 +56,14 @@ const TABS: { path: string; icon: IconName; label: MessageKey; match: (p: string
 
 const SIDE: { path: string; icon: IconName; label: MessageKey; match: (p: string) => boolean }[] = [
   TABS[0], TABS[1],
-  { path: routes.studio(), icon: 'sparkles', label: 'nav.studio', match: (p) => p.startsWith('/studio') || p.startsWith('/create') },
+  { path: routes.studio(), icon: 'layers', label: 'nav.studio', match: (p) => p.startsWith('/studio') || p.startsWith('/create') || p.startsWith('/cover') || p.startsWith('/import') },
   { path: routes.templates(), icon: 'layout', label: 'nav.templates', match: (p) => p.startsWith('/templates') },
   { path: routes.export(), icon: 'download', label: 'nav.export', match: (p) => p.startsWith('/export') },
   TABS[3],
 ];
 
 /** Full-screen routes hide the tab bar to give the editor/reader the whole viewport. */
-const isImmersive = (p: string) => p.startsWith('/editor/') || p.startsWith('/reader/');
+const isImmersive = (p: string) => p.startsWith('/editor/') || p.startsWith('/reader/') || p.startsWith('/create');
 
 export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
@@ -106,8 +106,8 @@ export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => v
   return (
     <Sheet open={open} onClose={onClose} title={t('create.title')} size="sm">
       <div className="list create-list">
+        <ListRow icon="list" title={t('create.wizard')} subtitle={t('create.wizardDesc')} onClick={go(routes.create())} testId="create-wizard" />
         <ListRow icon="filePlus" title={t('create.blank')} subtitle={t('create.blankDesc')} onClick={() => setStep('blank')} testId="create-blank" />
-        <ListRow icon="sparkles" title={t('create.ai')} subtitle={t('create.aiDesc')} onClick={go(routes.create())} testId="create-ai" />
         <ListRow icon="layout" title={t('create.template')} subtitle={t('create.templateDesc')} onClick={go(routes.templates())} testId="create-template" />
         <ListRow icon="upload" title={t('create.import')} subtitle={t('create.importDesc')} onClick={go(routes.import())} testId="create-import" />
       </div>
@@ -131,7 +131,7 @@ function Shell() {
     case 'studio': page = <StudioPage />; break;
     case 'templates': page = <TemplatesPage />; break;
     case 'profile': page = <ProfilePage />; break;
-    case 'create': page = <CreatorPage />; break;
+    case 'create': page = <NewBookPage />; break;
     case 'editor': page = b ? <EditorPage key={b} bookId={b} /> : null; break;
     case 'reader': page = b ? <ReaderPage key={b} bookId={b} /> : null; break;
     case 'cover': page = <CoverPage key={b ?? 'pick'} bookId={b} />; break;

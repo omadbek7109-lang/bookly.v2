@@ -2,19 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useLibrary, useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes } from '../../app/router';
 import { BookCover } from '../../components/BookCover';
-import { Icon } from '../../components/Icon';
-import { Button, DemoBadge, EmptyState, Field, ListRow, PageHeader, Segmented, Spinner } from '../../components/ui';
+import { Button, EmptyState, Field, ListRow, PageHeader, Segmented, Spinner } from '../../components/ui';
 import type { Book, CoverDesign } from '../../models/book';
 import { COVER_TEMPLATES, coverTemplateName, fontLabel, FONTS, PALETTES, paletteLabel } from '../../models/templates';
 import type { MessageKey } from '../../i18n';
-import { getImageAI, type CoverStyle } from '../../services/ai';
+import { patternBlob, PATTERN_STYLES, type PatternStyle } from '../../services/cover/patterns';
 import { COVER_RATIO, loadAssetImage, renderCover, renderCoverBlob } from '../../services/cover/renderCover';
 import { downloadBlob } from '../../services/export/prepare';
 import { assets, books, MAX_ASSET_BYTES } from '../../services/storage/repository';
 import { slugify } from '../../utils/id';
 
-type Tab = 'text' | 'layout' | 'colors' | 'image' | 'ai';
-const STYLES: CoverStyle[] = ['cosmic', 'landscape', 'abstract', 'geometric', 'watercolor'];
+type Tab = 'text' | 'layout' | 'colors' | 'image' | 'pattern';
 
 export default function CoverPage({ bookId }: { bookId?: string }) {
   const { t } = useSettings();
@@ -30,7 +28,7 @@ export default function CoverPage({ bookId }: { bookId?: string }) {
     return (
       <div className="page">
         <PageHeader title={t('cover.title')} subtitle={t('cover.pickBook')} onBack={() => back(routes.studio())} />
-        {ready && !live.length ? <EmptyState title={t('home.chooseBookEmpty')} action={<Button icon="sparkles" onClick={() => navigate(routes.create())}>{t('home.empty.cta')}</Button>} /> : (
+        {ready && !live.length ? <EmptyState title={t('home.chooseBookEmpty')} action={<Button icon="plus" onClick={() => navigate(routes.create())}>{t('home.empty.cta')}</Button>} /> : (
           <div className="pick-grid">
             {live.map((b) => (
               <button key={b.id} type="button" className="pick-card" onClick={() => navigate(routes.cover(b.id), { replace: true })} data-testid="cover-pick">
@@ -54,8 +52,8 @@ function Designer({ book }: { book: Book }) {
   const [tab, setTab] = useState<Tab>('text');
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(true);
-  const [prompt, setPrompt] = useState(book.cover.aiPrompt || book.title);
-  const [style, setStyle] = useState<CoverStyle>('cosmic');
+  const [style, setStyle] = useState<PatternStyle>('cosmic');
+  const variant = useRef(0);
   const canvas = useRef<HTMLCanvasElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const latest = useRef(cover);
@@ -98,16 +96,18 @@ function Designer({ book }: { book: Book }) {
     if (f.size > MAX_ASSET_BYTES) { toast(t('editor.fileTooLarge', { mb: 15 }), 'error'); return; }
     const a = await assets.put(f, f.name);
     setBg({ kind: 'image', imageAssetId: a.id, imageX: 0.5, imageY: 0.5, imageScale: 1 });
-    set({ overlay: Math.max(cover.overlay, 0.3), textColor: '#ffffff', aiGenerated: false });
+    set({ overlay: Math.max(cover.overlay, 0.3), textColor: '#ffffff' });
   };
 
-  const generate = async () => {
+  /** Draws a decorative background right on the device (no network); each press gives another variant. */
+  const paint = async (s: PatternStyle = style) => {
     setBusy(true);
     try {
-      const blob = await getImageAI().generateCover({ prompt, style, colors: cover.background.colors, width: 1000, height: 1500 });
-      const a = await assets.put(blob, `ai-cover-${Date.now()}.jpg`);
+      variant.current += 1;
+      const blob = await patternBlob({ seed: `${book.id}:${variant.current}`, style: s, colors: cover.background.colors, width: 1000, height: 1500 });
+      const a = await assets.put(blob, `pattern-${s}-${Date.now()}.jpg`);
       setBg({ kind: 'image', imageAssetId: a.id, imageX: 0.5, imageY: 0.5, imageScale: 1 });
-      set({ aiGenerated: true, aiPrompt: prompt, overlay: Math.max(cover.overlay, 0.2), textColor: '#ffffff' });
+      set({ overlay: Math.max(cover.overlay, 0.2), textColor: '#ffffff' });
     } catch (e) { toast(String((e as Error).message), 'error'); } finally { setBusy(false); }
   };
 
@@ -125,7 +125,6 @@ function Designer({ book }: { book: Book }) {
       <div className="cover-layout">
         <div className="cover-preview">
           <canvas ref={canvas} className="cover-canvas" role="img" aria-label={cover.title} data-testid="cover-canvas" />
-          {cover.aiGenerated && <span className="cover-ai-tag"><DemoBadge /> AI</span>}
           <div className="row-actions">
             <Button variant="secondary" size="sm" icon="download" onClick={() => void download('image/png')} data-testid="cover-png">{t('cover.downloadPng')}</Button>
             <Button variant="secondary" size="sm" icon="download" onClick={() => void download('image/jpeg')} data-testid="cover-jpg">{t('cover.downloadJpg')}</Button>
@@ -135,7 +134,7 @@ function Designer({ book }: { book: Book }) {
           <Segmented value={tab} onChange={setTab} label={t('cover.title')} scroll options={[
             { value: 'text', label: t('cover.tab.text'), icon: 'type' }, { value: 'layout', label: t('cover.tab.layout'), icon: 'layout' },
             { value: 'colors', label: t('cover.tab.colors'), icon: 'palette' }, { value: 'image', label: t('cover.tab.image'), icon: 'image' },
-            { value: 'ai', label: t('cover.tab.ai'), icon: 'sparkles' },
+            { value: 'pattern', label: t('cover.tab.pattern'), icon: 'grid' },
           ]} />
           {tab === 'text' && (
             <div className="form">
@@ -203,14 +202,16 @@ function Designer({ book }: { book: Book }) {
               )}
             </div>
           )}
-          {tab === 'ai' && (
+          {tab === 'pattern' && (
             <div className="form">
-              <p className="demo-note"><Icon name="info" size={16} /> {t('cover.demoNote')}</p>
-              <Field label={t('cover.aiPrompt')} htmlFor="aip"><textarea id="aip" className="input" rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)} placeholder={t('cover.aiPromptPh')} /></Field>
-              <Field label={t('cover.aiStyle')}>
-                <div className="chips">{STYLES.map((s) => <button key={s} type="button" className={`chip-btn ${style === s ? 'is-active' : ''}`} onClick={() => setStyle(s)}>{t(`cover.style.${s}` as MessageKey)}</button>)}</div>
-              </Field>
-              <Button icon="sparkles" block loading={busy} onClick={() => void generate()} data-testid="cover-ai-generate">{busy ? t('cover.aiGenerating') : t('cover.aiGenerate')}</Button>
+              <p className="muted small">{t('cover.patternHint')}</p>
+              <div className="pattern-grid" role="radiogroup" aria-label={t('cover.tab.pattern')}>
+                {PATTERN_STYLES.map((s) => (
+                  <button key={s} type="button" role="radio" aria-checked={style === s} className={`chip-btn ${style === s ? 'is-active' : ''}`}
+                    onClick={() => { setStyle(s); void paint(s); }} disabled={busy} data-testid={`pattern-${s}`}>{t(`cover.style.${s}` as MessageKey)}</button>
+                ))}
+              </div>
+              <Button icon="refresh" variant="secondary" block loading={busy} onClick={() => void paint()} data-testid="pattern-again">{t('cover.patternAgain')}</Button>
             </div>
           )}
           <p className="muted small center">{saved ? t('common.saved') : t('common.unsaved')}</p>

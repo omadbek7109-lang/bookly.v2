@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, type KeyboardEvent as RKeyboardEvent } from 'react';
+import { memo, useLayoutEffect, useRef, type KeyboardEvent as RKeyboardEvent } from 'react';
 import { useSettings, useUi } from '../../app/AppContext';
 import { Icon } from '../../components/Icon';
 import { Button, IconButton, Segmented } from '../../components/ui';
