@@ -394,6 +394,56 @@ test('delete all books (signed in): server 4-digit code, wrong/locked/replay rej
   await ctx.close();
 });
 
+test('delete all books still works when the server code check is not set up: code checked on the device, cloud copies removed with the user\'s own session', async () => {
+  const fake = createFakeSupabase({ wipeReady: false });
+  const other = await device(fake);
+  await signUp(other.page, 'qoshni@test.uz');
+  await promptAnswered(other.page);
+  await createBook(other.page, 'Qo‘shni kitobi');
+  await go(other.page, '#/cloud');
+  await other.page.click('[data-testid=backup-now]');
+  await waitFor(() => fake.state.books.length === 1, 'other user backed up');
+  await other.ctx.close();
+  const otherId = fake.state.books[0].user_id;
+  fake.state.objects.set(`${otherId}/qoshni.png`, { bytes: Buffer.from('x'), type: 'image/png' });
+  fake.state.assets.push({ id: 'a-other', user_id: otherId, local_id: 'ast_other', storage_path: `${otherId}/qoshni.png` });
+
+  const { ctx, page } = await device(fake, { width: 360, height: 740 });
+  await signUp(page, 'egasi@test.uz');
+  await promptAnswered(page);
+  await createBook(page, 'Mening kitobim');
+  await go(page, '#/cloud');
+  await page.click('[data-testid=backup-now]');
+  await waitFor(() => fake.state.books.length === 2, 'my book backed up');
+  const me = [...fake.state.users.values()].find((u) => u.email === 'egasi@test.uz').id;
+  fake.state.objects.set(`${me}/rasm.png`, { bytes: Buffer.from('y'), type: 'image/png' });
+  fake.state.assets.push({ id: 'a-me', user_id: me, local_id: 'ast_me', storage_path: `${me}/rasm.png` });
+
+  await go(page, '#/profile');
+  await page.click('[data-testid=clear-all]');
+  await page.waitForSelector('[data-testid=wipe-sheet][data-mode=direct]');
+  assert.equal(await page.locator('[data-testid=wipe-message]').count(), 0, 'no "server not ready" error');
+  const code = (await page.locator('[data-testid=wipe-code]').innerText()).replace(/\D/g, '');
+  await page.fill('[data-testid=wipe-input]', code === '0000' ? '1111' : '0000');
+  await page.click('[data-testid=wipe-confirm]');
+  await page.waitForSelector('[data-testid=wipe-message]');
+  assert.equal(fake.state.books.length, 2, 'wrong code deletes nothing');
+  await page.fill('[data-testid=wipe-input]', code);
+  await page.click('[data-testid=wipe-confirm]');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=wipe-sheet]'));
+  assert.deepEqual(fake.state.books.map((b) => b.title), ['Qo‘shni kitobi'], 'only my cloud book is gone');
+  assert.ok(fake.state.chapters.every((c) => c.user_id !== me), 'my chapters gone');
+  assert.ok(!fake.state.objects.has(`${me}/rasm.png`), 'my file gone');
+  assert.ok(fake.state.objects.has(`${otherId}/qoshni.png`), 'neighbour file kept');
+  assert.deepEqual(fake.state.assets.map((a) => a.id), ['a-other'], 'neighbour asset row kept');
+  await go(page, '#/books');
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-testid=book-row]').count(), 0, 'device cleared too');
+  await go(page, '#/profile');
+  await page.waitForSelector('[data-testid=account-email]'); // still signed in
+  await ctx.close();
+});
+
 test('delete all books: 5 wrong codes lock the session and a new code is needed; expired codes are refused', async () => {
   const fake = createFakeSupabase({ wipeTtlMs: 1500 });
   const { ctx, page } = await device(fake);

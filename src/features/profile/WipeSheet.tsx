@@ -15,7 +15,9 @@ import { cloudClient, useCloud } from '../cloud/CloudContext';
  * Not signed in → only this device holds the books, so the code is generated and checked here with
  * crypto.getRandomValues (there is nothing on a server to protect).
  */
-type Mode = 'server' | 'local';
+/** server: Edge Function checks the code; direct: server function not set up yet → the code is checked here and the
+ * cloud copies are deleted with the user's own session (RLS); local: not signed in, books live only on this device. */
+type Mode = 'server' | 'direct' | 'local';
 interface Session { mode: Mode; requestId: string; code: string; expiresAt: number }
 type Phase = 'starting' | 'ready' | 'checking' | 'done' | 'error';
 
@@ -55,6 +57,12 @@ export function WipeSheet({ open, onClose, keepAssetIds }: { open: boolean; onCl
       const client = cloudClient();
       if (!client) throw new CloudError('not configured', 'not_configured');
       const r = await client.invoke<{ request_id?: string; code?: string; expires_at?: string; error?: string }>('wipe-books', { action: 'start' });
+      if (r.status === 503 || r.status === 404) {
+        // The server-side code check is not deployed — still delete, through the user's own session.
+        setSession({ mode: 'direct', requestId: 'direct', code: localCode(), expiresAt: Date.now() + TTL_MS });
+        setPhase('ready');
+        return;
+      }
       if (r.status !== 200 || !r.body.code || !r.body.request_id) throw new CloudError(r.body.error ?? 'error', r.body.error ?? 'server_error', r.status);
       setSession({ mode, requestId: r.body.request_id, code: r.body.code, expiresAt: Date.parse(r.body.expires_at ?? '') || Date.now() + TTL_MS });
       setPhase('ready');
@@ -94,11 +102,17 @@ export function WipeSheet({ open, onClose, keepAssetIds }: { open: boolean; onCl
     busy.current = true;
     setPhase('checking'); setMessage(null);
     try {
-      if (session.mode === 'local') {
+      if (session.mode === 'local' || session.mode === 'direct') {
         if (value !== session.code) {
           const l = left - 1;
           setLeft(l); setValue(''); setPhase(l > 0 ? 'ready' : 'error');
           setMessage(l > 0 ? t('wipe.wrong', { n: l }) : t('wipe.locked'));
+          return;
+        }
+        if (session.mode === 'direct') {
+          if (!cloud.engine) throw new CloudError('not configured', 'not_configured');
+          const r = await cloud.engine.wipeOwnCloud();
+          await finishLocal(r.books, r.filesFailed);
           return;
         }
         await finishLocal(null);
@@ -127,7 +141,7 @@ export function WipeSheet({ open, onClose, keepAssetIds }: { open: boolean; onCl
           ? <Button icon="refresh" onClick={() => void start()} data-testid="wipe-new-code">{t('wipe.newCode')}</Button>
           : <Button variant="danger" icon="trash" loading={phase === 'checking'} disabled={phase !== 'ready' || value.length !== 4} onClick={() => void confirm()} data-testid="wipe-confirm">{t('common.delete')}</Button>}
       </>}>
-      <div className="wipe" data-testid="wipe-sheet" data-mode={mode}>
+      <div className="wipe" data-testid="wipe-sheet" data-mode={session?.mode ?? mode}>
         <div className="wipe-scope">
           <p><Icon name="trash" size={16} /> {t('wipe.deletes')}</p>
           <p><Icon name="shield" size={16} /> {t('wipe.keeps')}</p>

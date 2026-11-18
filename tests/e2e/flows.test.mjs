@@ -271,6 +271,29 @@ test('library: search, favorite, duplicate, rename, trash and restore', async ()
   await ctx.close();
 });
 
+test('book menu: every action, including delete, is visible without scrolling on a small phone; delete works', async () => {
+  const { ctx, page } = await newPage({ width: 320, height: 560 }); // ≈ 360×640 phone with a large system font
+  await createBookFromText(page, 'Suniy intellekt talabalar talimida Rustamov Anvarjon kengaytirilgan', 1);
+  await go(page, '#/books');
+  await page.locator('[data-testid=row-menu]').first().click();
+  await page.waitForSelector('.sheet .menu-grid');
+  await page.waitForTimeout(400);
+  for (const id of ['menu-edit', 'menu-preview', 'menu-cover', 'menu-export', 'menu-favorite', 'menu-rename', 'menu-duplicate', 'menu-status', 'menu-delete']) {
+    const b = await page.locator(`[data-testid=${id}]`).boundingBox();
+    assert.ok(b && b.y >= 0 && b.y + b.height <= 560 + 0.5 && b.x >= 0 && b.x + b.width <= 320 + 0.5, `${id} is on screen: ${JSON.stringify(b)}`);
+  }
+  await page.screenshot({ path: path.join(OUT, 'book-menu-320.png') });
+  await page.click('[data-testid=menu-delete]');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=book-row]').length === 0);
+  await go(page, '#/books?tab=trash');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=book-row]').length === 1);
+  await page.locator('[data-testid=row-menu]').first().click();
+  await page.click('[data-testid=menu-delete-forever]');
+  if (await page.locator('[data-testid=dialog-confirm]').count()) await page.click('[data-testid=dialog-confirm]');
+  await page.waitForFunction(() => document.querySelectorAll('[data-testid=book-row]').length === 0);
+  await ctx.close();
+});
+
 async function download(page, click) {
   const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 30000 }), click()]);
   const file = path.join(OUT, dl.suggestedFilename());
@@ -636,6 +659,77 @@ test('interface designs: 6 skins × light/dark, corner styles; saved, applied be
   assert.deepEqual(early, ['forest', 'sharp']);
   await page.waitForSelector('.home');
   await page.screenshot({ path: path.join(OUT, 'skin-forest-light-360.png') });
+  await ctx.close();
+});
+
+test('every screen and every sheet follows the chosen interface design (no hard-coded colours)', async () => {
+  const { ctx, page } = await newPage({ width: 390, height: 844 });
+  const id = await createBookFromText(page, 'Rang sinovi', 2);
+  const IGNORE = '.book-cover, canvas, .hero-art, .skin-mini, .style-designs, .swatches, .palette-grid, .wizard-templates, .template-card, .cover-tpl, '
+    + '.tone-blue, .tone-rose, .tone-amber, .tone-teal, .fav, .about-status, .format-card, .btn-danger, .danger-link, .wipe-error, .wipe-scope, '
+    + '.is-danger, .list-row.danger, .book-tile-done, .progress.is-done, .toast, .splash, .book-content, .preview-paper, .reader, .field-error, .save-chip, '
+    + '.style-sample, .req'; // .style-sample shows the BOOK's own colours; .req is the red required-field mark
+  const snap = () => page.evaluate((ignore) => {
+    const out = {};
+    const keyOf = (e) => { const parts = []; for (let n = e; n && n !== document.body; n = n.parentElement) parts.unshift(`${n.tagName}${n.dataset.testid ? `[${n.dataset.testid}]` : ''}:${[...(n.parentElement?.children ?? [])].indexOf(n)}`); return parts.join('>'); };
+    for (const e of document.querySelectorAll('body *')) {
+      if (e.closest(ignore)) continue;
+      const r = e.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      const cs = getComputedStyle(e);
+      if (cs.visibility === 'hidden' || cs.opacity === '0') continue;
+      out[keyOf(e)] = { bg: cs.backgroundColor, img: cs.backgroundImage, fg: cs.color, cls: String(e.className).slice(0, 60) };
+    }
+    return out;
+  }, IGNORE);
+  const chroma = (c) => {
+    const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?/.exec(c || '');
+    if (!m) return false;
+    const [r, g, b] = [m[1], m[2], m[3]].map(Number); const a = m[4] === undefined ? 1 : Number(m[4]);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    return a > 0.25 && mx > 40 && (mx - mn) / mx > 0.3 && (mx - mn) > 40;
+  };
+  const colorsIn = (img) => (img.match(/rgba?\([^)]+\)/g) || []).filter(chroma).join(' ');
+  const states = [
+    ['home', '#/', null], ['library', '#/books', null],
+    ['book-menu', '#/books', async () => { await page.locator('[data-testid=row-menu]').first().click(); await page.waitForSelector('.sheet .menu-grid'); }],
+    ['sort-sheet', '#/books', async () => { await page.click('[data-testid=library-sort]'); await page.waitForSelector('.select-sheet, .select-popover'); }],
+    ['create-sheet', '#/', async () => { await page.click('[data-testid=fab-create]'); await page.waitForSelector('[data-testid=create-wizard]'); }],
+    ['studio', '#/studio', null], ['profile', '#/profile', null],
+    ['wipe-sheet', '#/profile', async () => { await page.click('[data-testid=clear-all]'); await page.waitForSelector('[data-testid=wipe-input]'); }],
+    ['about', '#/about', null], ['wizard', '#/create', null],
+    ['editor', `#/editor/${id}`, null],
+    ['style-sheet', `#/editor/${id}`, async () => { await page.click('[data-testid=style-open]'); await page.waitForSelector('[data-testid=style-sheet]'); }],
+    ['insert-sheet', `#/editor/${id}`, async () => { await page.click('[data-testid=insert-sheet]'); await page.waitForSelector('.insert-menu'); }],
+    ['cover', `#/cover/${id}`, null], ['export', `#/export/${id}`, null], ['cloud', '#/cloud', null],
+  ];
+  const problems = [];
+  for (const theme of ['dark', 'light']) {
+    const shots = {};
+    for (const skin of ['ocean', 'sunset']) {
+      await page.evaluate(([th, sk]) => { const s = JSON.parse(localStorage.getItem('bookly.settings') || '{}'); s.theme = th; s.skin = sk; s.reducedMotion = true; localStorage.setItem('bookly.settings', JSON.stringify(s)); }, [theme, skin]);
+      shots[skin] = {};
+      for (const [name, hash, act] of states) {
+        await page.goto('about:blank');
+        await page.goto(`${base}&noIntro=1${hash}`);
+        await page.waitForTimeout(500);
+        if (act) await act();
+        await page.waitForTimeout(450);
+        shots[skin][name] = await snap();
+      }
+    }
+    for (const [name] of states) {
+      const a = shots.ocean[name], b = shots.sunset[name];
+      for (const k of Object.keys(a)) {
+        if (!b[k]) continue;
+        if (chroma(a[k].bg) && a[k].bg === b[k].bg) problems.push(`${theme}/${name}: background ${a[k].bg} on .${a[k].cls}`);
+        if (chroma(a[k].fg) && a[k].fg === b[k].fg) problems.push(`${theme}/${name}: text ${a[k].fg} on .${a[k].cls}`);
+        const ga = colorsIn(a[k].img); if (ga && ga === colorsIn(b[k].img)) problems.push(`${theme}/${name}: gradient ${ga} on .${a[k].cls}`);
+      }
+    }
+  }
+  const uniq = [...new Set(problems)];
+  assert.deepEqual(uniq.slice(0, 40), [], `${uniq.length} element(s) ignore the chosen design`);
   await ctx.close();
 });
 

@@ -12,4 +12,4 @@ export interface FakeSupabase {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   state: { users: Map<string, any>; books: any[]; chapters: any[]; assets: any[]; objects: Map<string, any>; sync: any[] };
 }
-export function createFakeSupabase(opts?: { requireConfirmation?: boolean; aiConfigured?: boolean; wipeTtlMs?: number }): FakeSupabase;
+export function createFakeSupabase(opts?: { requireConfirmation?: boolean; aiConfigured?: boolean; wipeTtlMs?: number; wipeReady?: boolean }): FakeSupabase;

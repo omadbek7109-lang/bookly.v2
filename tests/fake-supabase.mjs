@@ -8,8 +8,8 @@ import crypto from 'node:crypto';
 let seq = 0;
 const nextId = (p) => `${p}-${(++seq).toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`.slice(0, 36);
 
-export function createFakeSupabase({ requireConfirmation = false, aiConfigured = false, wipeTtlMs } = {}) {
-  const opts = { aiConfigured, wipeTtlMs };
+export function createFakeSupabase({ requireConfirmation = false, aiConfigured = false, wipeTtlMs, wipeReady = true } = {}) {
+  const opts = { aiConfigured, wipeTtlMs, wipeReady };
   const users = new Map(); // email -> {id,email,password,confirmed,meta}
   const tokens = new Map(); // access token -> userId
   const refreshTokens = new Map();
@@ -116,6 +116,7 @@ export function createFakeSupabase({ requireConfirmation = false, aiConfigured =
       // Mirrors supabase/functions/wipe-books + bookly_wipe_start/confirm (5 min, 5 attempts, single use).
       const uid = userOf(headers);
       if (!uid) return json(401, { error: 'needs_login' });
+      if (!opts.wipeReady) return json(503, { error: 'wipe_not_ready' }); // function deployed, migration not applied
       const d = data();
       if (d.action === 'start') {
         for (const r of wipeRequests) if (r.user_id === uid && r.status === 'pending') r.status = 'superseded';

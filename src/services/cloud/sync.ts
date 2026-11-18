@@ -213,6 +213,26 @@ export class SyncEngine {
   }
 
   /** Removes the cloud copy only; the book stays on this device. */
+  /**
+   * Deletes every cloud book of the signed-in user (chapters go with them) and all their book files, using the
+   * user's own session — row-level security limits every statement to this user's rows and storage folder.
+   * Used when the server-side `wipe-books` function is not available.
+   */
+  async wipeOwnCloud(): Promise<{ books: number; filesFailed: number }> {
+    const rows = await this.client.select<{ local_id: string }>('books', 'select=local_id');
+    if (rows.length) await this.client.remove('books', 'local_id=not.is.null');
+    const files = await this.client.select<RemoteAssetRow>('book_assets', 'select=storage_path,local_id');
+    const paths = [...new Set(files.map((f) => f.storage_path))];
+    let filesFailed = 0;
+    for (let i = 0; i < paths.length; i += 100) {
+      const chunk = paths.slice(i, i + 100);
+      try { await this.client.removeObjects(chunk); } catch { filesFailed += chunk.length; }
+    }
+    if (files.length) await this.client.remove('book_assets', 'local_id=not.is.null');
+    await this.resetAfterWipe();
+    return { books: rows.length, filesFailed };
+  }
+
   async removeFromCloud(localId: string): Promise<void> {
     await this.client.remove('books', `local_id=eq.${encodeURIComponent(localId)}`);
     if (this.state) { delete this.state.records[localId]; await this.persist(); }

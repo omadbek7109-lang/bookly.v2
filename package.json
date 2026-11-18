@@ -14,6 +14,7 @@
     "test:unit": "node scripts/test-unit.mjs",
     "test:live": "node scripts/live-check.mjs",
     "perf:heat": "node scripts/build.mjs && node tests/perf/heat-profile.mjs",
+    "check:controls": "node scripts/build.mjs && node tests/perf/controls-crawl.mjs",
     "test:e2e": "node scripts/build.mjs && node --test --test-concurrency=1 tests/e2e/flows.test.mjs tests/e2e/cloud.test.mjs tests/e2e/i18n.test.mjs"
   },
   "dependencies": {

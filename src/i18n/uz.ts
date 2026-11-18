@@ -851,6 +851,10 @@ const uz = {
   'skin.corners.round': "Yumaloq",
   'skin.corners.soft': "Yumshoq",
   'skin.corners.sharp': "To‘g‘ri",
+
+  // book menu tiles
+  'menu.cover': "Muqova",
+  'menu.read': "Ko‘rish",
 };
 
 export type MessageKey = keyof typeof uz;

@@ -800,6 +800,8 @@ const en: Record<MessageKey, string> = {
   'skin.corners.round': "Round",
   'skin.corners.soft': "Soft",
   'skin.corners.sharp': "Sharp",
+  'menu.cover': "Cover",
+  'menu.read': "Read",
 };
 
 export default en;
