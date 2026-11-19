@@ -1101,6 +1101,18 @@ const uz = {
   'admin.err.network': "Internet bilan aloqa yo‘q.",
   'admin.err.bad_request': "So‘rov noto‘g‘ri.",
   'admin.err.server_error': "Serverda xato. Birozdan keyin qayta urinib ko‘ring.",
+
+  // fullscreen
+  'profile.fullscreen': "To‘liq ekran (Telegram)",
+
+  // admin books
+  'admin.tab.books': "Kitoblar",
+  'admin.userBooks': "Kitoblari",
+  'admin.noBooks': "Kitob yo‘q.",
+  'admin.inTrash': "Savatda",
+  'admin.updated': "Oxirgi o‘zgarish",
+  'admin.searchBooks': "Kitob nomi, muallif yoki egasi",
+  'admin.booksPrivacy': "Kitoblar haqida faqat ma’lumot ko‘rinadi (nom, egasi, hajmi, sanalar). Kitob matni foydalanuvchining shaxsiy mulki va ko‘rsatilmaydi.",
 };
 
 export type MessageKey = keyof typeof uz;

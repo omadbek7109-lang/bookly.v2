@@ -1044,6 +1044,14 @@ const en: Record<MessageKey, string> = {
   'admin.err.network': "No internet connection.",
   'admin.err.bad_request': "Bad request.",
   'admin.err.server_error': "Server error. Please try again later.",
+  'profile.fullscreen': "Full screen (Telegram)",
+  'admin.tab.books': "Books",
+  'admin.userBooks': "Their books",
+  'admin.noBooks': "No books.",
+  'admin.inTrash': "In trash",
+  'admin.updated': "Last change",
+  'admin.searchBooks': "Title, author or owner",
+  'admin.booksPrivacy': "Only book details are shown (title, owner, size, dates). The text belongs to the author and is never shown.",
 };
 
 export default en;

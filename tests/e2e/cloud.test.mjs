@@ -395,12 +395,12 @@ test('delete all books (signed in): server 4-digit code, wrong/locked/replay rej
 });
 
 /** A device inside Telegram, signed in automatically as the given Telegram user. */
-async function telegramDevice(fake, tgUser, { width = 390, height = 844 } = {}) {
+async function telegramDevice(fake, tgUser, { width = 390, height = 844, extra = '' } = {}) {
   const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, colorScheme: 'dark' });
   const user = JSON.stringify(tgUser);
   const initData = new URLSearchParams({ user, auth_date: String(Math.floor(Date.now() / 1000)), hash: 'test-valid-hash' }).toString();
   await ctx.route('https://telegram.org/**', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', headers: CORS,
-    body: `window.Telegram={WebApp:{initData:${JSON.stringify(initData)},initDataUnsafe:{user:${user}},ready(){},expand(){},disableVerticalSwipes(){},setHeaderColor(){},setBackgroundColor(){},HapticFeedback:{impactOccurred(){},notificationOccurred(){}}}};` }));
+    body: `window.Telegram={WebApp:{initData:${JSON.stringify(initData)},initDataUnsafe:{user:${user}},ready(){},expand(){},disableVerticalSwipes(){},setHeaderColor(){},setBackgroundColor(){},HapticFeedback:{impactOccurred(){},notificationOccurred(){}}${extra}}};` }));
   await ctx.route(`${SUPA}/**`, async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
@@ -415,6 +415,35 @@ async function telegramDevice(fake, tgUser, { width = 390, height = 844 } = {}) 
   await answerPrompt(page);
   return { ctx, page };
 }
+
+test('Telegram full screen on phones: requested at start, content kept below the status bar and Telegram buttons, can be switched off', async () => {
+  const fake = createFakeSupabase();
+  // Telegram 8.0 on Android: full screen + safe areas (24px status bar, 46px Telegram Close/⋯ buttons)
+  const extra = `,platform:'android',isFullscreen:false,isVersionAtLeast(v){return parseFloat(v)<=8},`
+    + `safeAreaInset:{top:24,bottom:16,left:0,right:0},contentSafeAreaInset:{top:46,bottom:0,left:0,right:0},`
+    + `__h:{},onEvent(e,cb){(this.__h[e]=this.__h[e]||[]).push(cb)},`
+    + `requestFullscreen(){window.__fs=(window.__fs||0)+1;this.isFullscreen=true;(this.__h.fullscreenChanged||[]).forEach(f=>f())},`
+    + `exitFullscreen(){this.isFullscreen=false;(this.__h.fullscreenChanged||[]).forEach(f=>f())}`;
+  const { ctx, page } = await telegramDevice(fake, { id: 800001, first_name: 'Ekran' }, { width: 390, height: 844, extra });
+  assert.equal(await page.evaluate(() => window.__fs), 1, 'full screen requested once at start');
+  assert.equal(await page.evaluate(() => document.documentElement.classList.contains('tg-fullscreen')), true);
+  assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--safe-t').trim()), '70px');
+  await go(page, '#/books');
+  const head = await page.locator('.page-header').first().boundingBox();
+  const title = await page.locator('.page-header h1').first().boundingBox();
+  assert.ok(title.y >= 70, `title starts below Telegram's buttons (${title.y}px)`);
+  assert.ok(head.y >= 0);
+  const tabbar = await page.locator('.tabbar').boundingBox();
+  assert.ok(tabbar.y + tabbar.height <= 844 + 0.5, 'tab bar inside the screen');
+  await page.screenshot({ path: path.join(OUT, 'telegram-fullscreen.png') });
+  // switch off in Profile → back to the normal Telegram window, and remembered
+  await go(page, '#/profile');
+  await page.locator('label[for=fs]').scrollIntoViewIfNeeded();
+  await page.click('label[for=fs]');
+  await page.waitForFunction(() => !document.documentElement.classList.contains('tg-fullscreen'));
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('bookly.settings')).fullscreen), false);
+  await ctx.close();
+});
 
 test('admin panel: only admins get in; stats, broadcast with photo to subscribers (blocked ones skipped), personal message, announcement, feedback inbox', async () => {
   const ADMIN = 900001, USER = 900002;
@@ -478,6 +507,22 @@ test('admin panel: only admins get in; stats, broadcast with photo to subscriber
   await a.page.locator('.sheet [data-testid=admin-text]').fill('Salom, Dilnoza! Fikringiz uchun rahmat.');
   await a.page.locator('.sheet [data-testid=admin-send]').click();
   await waitFor(() => fake.botMessages.some((m) => m.chat_id === USER && /Salom, Dilnoza/.test(m.text)), 'personal message');
+  await a.page.keyboard.press('Escape');
+
+  // books: metadata of everyone's books (never the text), also inside the user's card
+  await u.page.evaluate(() => { location.hash = '#/'; });
+  await createBook(u.page, 'Dilnozaning kitobi');
+  await go(u.page, '#/cloud');
+  await u.page.click('[data-testid=backup-now]');
+  await waitFor(() => fake.state.books.some((b) => b.title === 'Dilnozaning kitobi'), 'user book in the cloud');
+  await a.page.getByRole('tab', { name: 'Kitoblar' }).click();
+  await a.page.waitForSelector('[data-testid=admin-books] li');
+  assert.match(await a.page.locator('[data-testid=admin-books]').innerText(), /Dilnozaning kitobi[\s\S]*Dilnoza/);
+  await a.page.fill('[data-testid=admin-book-search]', 'yo‘q-bunday');
+  await a.page.waitForSelector('[data-testid=admin-page] .muted.small >> text=Kitob yo‘q.');
+  await a.page.getByRole('tab', { name: 'Foydalanuvchilar' }).click();
+  await a.page.locator('[data-testid=admin-users] li button').first().click();
+  await a.page.waitForSelector('.sheet [data-testid=admin-books] li');
   await a.page.keyboard.press('Escape');
 
   // announcement → everyone sees it at the top of the app and can close it

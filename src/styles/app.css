@@ -1400,3 +1400,8 @@ button.list-row:active { background: var(--accent-soft); }
 .robot-ghost { visibility: hidden; }
 /* mouth moves for as long as Buki is talking (only while talking; idle Buki has no running animation) */
 .robot-btn-main .robot-face.is-talk .robot-mouth { animation-iteration-count: infinite; }
+.admin-book { gap: 4px !important; }
+.admin-book strong { overflow-wrap: anywhere; }
+/* A sticky page header already pads itself below the status bar / Telegram buttons; pull it up over the page's
+   own top padding so that space is not added twice (visible on notched phones and in Telegram full screen). */
+.main > .page > .page-header.is-sticky:first-child, .main > .page-header.is-sticky:first-child { margin-top: calc(-1 * (var(--safe-t) + 8px)); }

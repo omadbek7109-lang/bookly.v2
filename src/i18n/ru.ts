@@ -1044,6 +1044,14 @@ const ru: Record<MessageKey, string> = {
   'admin.err.network': "Нет связи с интернетом.",
   'admin.err.bad_request': "Неверный запрос.",
   'admin.err.server_error': "Ошибка сервера. Попробуйте позже.",
+  'profile.fullscreen': "Полный экран (Telegram)",
+  'admin.tab.books': "Книги",
+  'admin.userBooks': "Книги пользователя",
+  'admin.noBooks': "Книг нет.",
+  'admin.inTrash': "В корзине",
+  'admin.updated': "Изменено",
+  'admin.searchBooks': "Название, автор или владелец",
+  'admin.booksPrivacy': "Видны только сведения о книгах (название, владелец, объём, даты). Текст книги — личное дело автора и не показывается.",
 };
 
 export default ru;

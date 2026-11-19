@@ -1,22 +1,10 @@
 /**
  * Bookly admin API + user feedback (Edge Function `admin`, verify_jwt = false — it authenticates itself).
  *
- * Who is an admin: the Telegram user ids in the Edge Function secret BOOKLY_ADMIN_IDS (comma separated).
- * The caller proves who they are with EITHER the Supabase session (Authorization: Bearer <jwt>, the profile's
- * telegram_id is checked) OR the Telegram Mini App initData (header X-Telegram-Init-Data, HMAC-verified with the
- * bot token). Nothing here trusts an id sent in the request body.
- *
- *   POST { action: 'whoami' }                                     → { admin, name }
- *   POST { action: 'feedback', message }                          → any signed-in user / Telegram user
- *   — admin only —
- *   POST { action: 'stats', days? }                               → dashboard numbers
- *   POST { action: 'users', search?, offset? }                    → user list
- *   POST { action: 'broadcast_test' | 'broadcast', text, button_text?, button_url?, open_app?, photo? (base64 data URL) }
- *   POST { action: 'broadcast_status', id } / 'broadcast_resume' / 'broadcast_cancel' / 'broadcasts'
- *   POST { action: 'message_user', telegram_id, text, photo? }
- *   POST { action: 'announce', text, link_url?, tone?, days? } / 'announcements' / 'announce_off' { id }
- *   POST { action: 'feedback_list' } / 'feedback_reply' { id, text } / 'feedback_read' { id }
- *   POST { action: 'audit' }
+ * Who is an admin: Telegram user ids in the app_admins table (service role only) plus the optional Edge Function
+ * secret BOOKLY_ADMIN_IDS. The caller proves who they are with EITHER the Supabase session (Authorization: Bearer
+ * <jwt>, the profile's telegram_id is checked) OR the Telegram Mini App initData (header X-Telegram-Init-Data,
+ * HMAC-verified with the bot token). Nothing here trusts an id sent in the request body.
  *
  * TELEGRAM_BOT_TOKEN and the service key live only in Edge Function secrets; never returned or logged.
  */
@@ -157,7 +145,10 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
   const token = Deno.env.get('TELEGRAM_BOT_TOKEN') ?? '';
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false, autoRefreshToken: false } });
+  // admins: the optional secret BOOKLY_ADMIN_IDS plus the app_admins table (service role only)
   const admins = parseAdminIds(Deno.env.get('BOOKLY_ADMIN_IDS'));
+  const { data: dbAdmins } = await db.from('app_admins').select('telegram_id');
+  for (const r of dbAdmins ?? []) admins.add(Number(r.telegram_id));
 
   let body: Record<string, any>;
   try { body = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
@@ -196,6 +187,12 @@ Deno.serve(async (req) => {
         const { data, error } = await db.rpc('bookly_admin_users', { p_search: String(body.search ?? '').slice(0, 80), p_limit: 50, p_offset: Number(body.offset) || 0 });
         if (error) throw error;
         return json(200, { users: data });
+      }
+      case 'books': {
+        // metadata only (title, owner, counts, dates) — never the book text
+        const { data, error } = await db.rpc('bookly_admin_books', { p_search: String(body.search ?? '').slice(0, 80), p_user: body.user_id ? String(body.user_id) : null, p_limit: 50, p_offset: Number(body.offset) || 0 });
+        if (error) throw error;
+        return json(200, { books: data });
       }
       case 'broadcast_test':
       case 'broadcast':

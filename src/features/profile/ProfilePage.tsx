@@ -1,3 +1,4 @@
+import { canFullscreen, setTelegramFullscreen } from '../../services/platform/telegram';
 import { useEffect, useRef, useState } from 'react';
 import { useLibrary, useSettings, useUi } from '../../app/AppContext';
 import { Icon } from '../../components/Icon';
@@ -117,6 +118,9 @@ export default function ProfilePage() {
           ]} />
         </Field>
         <SkinPicker />
+        {canFullscreen() && (
+          <Switch id="fs" label={t('profile.fullscreen')} checked={settings.fullscreen} onChange={(v) => { update({ fullscreen: v }); setTelegramFullscreen(v); }} />
+        )}
         <Switch id="rm" label={t('profile.reducedMotion')} checked={settings.reducedMotion} onChange={(v) => update({ reducedMotion: v })} />
         <p className="muted small setting-hint">{t('profile.reducedMotionHint')}</p>
       </div>

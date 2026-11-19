@@ -6,12 +6,12 @@ import { Button, EmptyState, Field, IconButton, PageHeader, ProgressBar, Segment
 import type { MessageKey } from '../../i18n';
 import {
   AdminError, adminApi, photoToDataUrl, previewHtml,
-  type AdminStats, type AdminUser, type Announcement, type AuditItem, type Broadcast, type FeedbackItem, type OutgoingMessage,
+  type AdminBook, type AdminStats, type AdminUser, type Announcement, type AuditItem, type Broadcast, type FeedbackItem, type OutgoingMessage,
 } from '../../services/admin/api';
 import { formatBytes } from '../../services/export/prepare';
 import { useCloud } from '../cloud/CloudContext';
 
-type Tab = 'stats' | 'send' | 'users' | 'announce' | 'feedback' | 'audit';
+type Tab = 'stats' | 'send' | 'users' | 'books' | 'announce' | 'feedback' | 'audit';
 
 /** Turns an admin API error into a sentence for the admin. */
 function useErrorText() {
@@ -49,6 +49,7 @@ export default function AdminPage() {
             { value: 'stats', label: t('admin.tab.stats'), icon: 'target' },
             { value: 'send', label: t('admin.tab.send'), icon: 'send' },
             { value: 'users', label: t('admin.tab.users'), icon: 'user' },
+            { value: 'books', label: t('admin.tab.books'), icon: 'book' },
             { value: 'announce', label: t('admin.tab.announce'), icon: 'info' },
             { value: 'feedback', label: t('admin.tab.feedback'), icon: 'help' },
             { value: 'audit', label: t('admin.tab.audit'), icon: 'clock' },
@@ -56,6 +57,7 @@ export default function AdminPage() {
           {tab === 'stats' && <StatsTab />}
           {tab === 'send' && <SendTab />}
           {tab === 'users' && <UsersTab />}
+          {tab === 'books' && <BooksTab />}
           {tab === 'announce' && <AnnounceTab />}
           {tab === 'feedback' && <FeedbackTab />}
           {tab === 'audit' && <AuditTab />}
@@ -310,6 +312,8 @@ function UsersTab() {
               {pick.email && !pick.email.endsWith('.invalid') && <><dt>Email</dt><dd>{pick.email}</dd></>}
               {pick.telegram_id && <><dt>Telegram</dt><dd>{pick.telegram_username ? `@${pick.telegram_username} · ` : ''}{pick.telegram_id}</dd></>}
             </dl>
+            <h3 className="sub-title">{t('admin.userBooks')}</h3>
+            <BookList userId={pick.id} />
             {pick.telegram_id ? (
               <>
                 <h3 className="sub-title">{t('admin.messageUser')}</h3>
@@ -320,6 +324,53 @@ function UsersTab() {
           </div>
         )}
       </Sheet>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ books (metadata only, never the text)
+function BookList({ userId, search = '' }: { userId?: string; search?: string }) {
+  const { t } = useSettings();
+  const errText = useErrorText();
+  const [books, setBooks] = useState<AdminBook[] | null>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    const id = setTimeout(() => { adminApi.books(search.trim(), userId).then((b) => { setBooks(b); setErr(''); }).catch((e) => setErr(errText(e))); }, 250);
+    return () => clearTimeout(id);
+  }, [search, userId]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (err) return <ErrorBox text={err} />;
+  if (!books) return <Spinner label={t('common.loading')} />;
+  if (!books.length) return <p className="muted small">{t('admin.noBooks')}</p>;
+  return (
+    <ul className="admin-list" data-testid="admin-books">
+      {books.map((b) => (
+        <li key={b.id} className="glass admin-book">
+          <div className="admin-row-head">
+            <strong>{b.title || t('common.untitled')}</strong>
+            {b.deleted ? <em className="status-chip is-failed">{t('admin.inTrash')}</em>
+              : <em className={`status-chip ${b.status === 'completed' ? 'is-done' : ''}`}>{b.status === 'completed' ? t('status.completed') : t('status.draft')}</em>}
+          </div>
+          <small className="muted">
+            {[b.author, t('common.chapters', { n: b.chapter_count }), t('goal.words', { n: b.word_count }), b.category ? t(`category.${b.category}` as MessageKey) : ''].filter(Boolean).join(' · ')}
+          </small>
+          {!userId && <small className="muted">👤 {b.owner_name || t('admin.noName')}{b.owner_telegram ? ` · @${b.owner_telegram}` : ''}</small>}
+          <small className="muted">{t('admin.updated')}: {new Date(b.updated_at).toLocaleString()}</small>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function BooksTab() {
+  const { t } = useSettings();
+  const [q, setQ] = useState('');
+  return (
+    <div className="admin-users">
+      <label className="search-box"><Icon name="search" size={18} />
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('admin.searchBooks')} aria-label={t('admin.searchBooks')} data-testid="admin-book-search" />
+      </label>
+      <p className="muted small">{t('admin.booksPrivacy')}</p>
+      <BookList search={q} />
     </div>
   );
 }

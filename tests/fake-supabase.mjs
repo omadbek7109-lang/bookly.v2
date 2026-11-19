@@ -177,6 +177,16 @@ export function createFakeSupabase({ requireConfirmation = false, aiConfigured =
           }));
           return json(200, { users: list });
         }
+        case 'books': {
+          const q = String(d.search ?? '').toLowerCase();
+          const list = books.filter((b) => (!d.user_id || b.user_id === d.user_id) && (!q || String(b.title).toLowerCase().includes(q))).map((b) => {
+            const u = [...users.values()].find((x) => x.id === b.user_id);
+            return { id: b.id, user_id: b.user_id, owner_name: u?.meta?.display_name || u?.email || null, owner_telegram: null, title: b.title, author: b.author ?? null,
+              category: b.category ?? null, language: b.language ?? null, status: b.status ?? 'draft', chapter_count: b.chapter_count ?? 0, word_count: b.word_count ?? 0,
+              deleted: !!b.deleted_at, created_at: b.created_at ?? new Date().toISOString(), updated_at: b.updated_at ?? new Date().toISOString() };
+          });
+          return json(200, { books: list });
+        }
         case 'broadcast_test': case 'broadcast': case 'message_user': {
           const text = html(d.text);
           if (!text && !d.photo) return json(400, { error: 'empty_message' });

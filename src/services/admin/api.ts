@@ -22,6 +22,11 @@ export interface Broadcast {
   status: 'sending' | 'paused' | 'done' | 'cancelled' | 'failed'; total: number; sent: number; failed: number; blocked: number;
   created_at: string; finished_at: string | null;
 }
+export interface AdminBook {
+  id: string; user_id: string; owner_name: string | null; owner_telegram: string | null; title: string; author: string | null;
+  category: string | null; language: string | null; status: string | null; chapter_count: number; word_count: number; deleted: boolean;
+  created_at: string; updated_at: string;
+}
 export interface Announcement { id: string; text: string; link_url: string | null; tone: 'info' | 'success' | 'warning'; active: boolean; created_at: string; expires_at: string | null }
 export interface FeedbackItem { id: string; user_id: string | null; telegram_id: number | null; name: string; message: string; status: 'new' | 'read' | 'answered'; created_at: string }
 export interface AuditItem { id: number; admin_telegram_id: number; action: string; details: Record<string, unknown>; created_at: string }
@@ -48,6 +53,7 @@ export const adminApi = {
   whoami: () => adminCall<{ admin: boolean; name: string; configured: boolean }>('whoami'),
   stats: (days = 14) => adminCall<AdminStats>('stats', { days }),
   users: (search = '', offset = 0) => adminCall<{ users: AdminUser[] }>('users', { search, offset }).then((r) => r.users ?? []),
+  books: (search = '', userId?: string) => adminCall<{ books: AdminBook[] }>('books', { search, user_id: userId ?? null }).then((r) => r.books ?? []),
   test: (m: OutgoingMessage) => adminCall<{ ok: true }>('broadcast_test', { ...m }),
   broadcast: (m: OutgoingMessage) => adminCall<{ broadcast: Broadcast }>('broadcast', { ...m }).then((r) => r.broadcast),
   broadcastStatus: (id: string) => adminCall<{ broadcast: Broadcast | null }>('broadcast_status', { id }).then((r) => r.broadcast),

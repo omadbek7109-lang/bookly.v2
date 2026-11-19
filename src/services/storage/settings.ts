@@ -12,6 +12,8 @@ export interface Settings {
   locale: Locale;
   theme: ThemePref;
   skin: Skin;
+  /** Telegram on phones: use the whole screen (Bot API 8.0 full-screen mode). */
+  fullscreen: boolean;
   corners: Corners;
   introSeen: boolean;
   reducedMotion: boolean;
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   locale: 'uz',
   theme: 'system',
   skin: 'bookly',
+  fullscreen: true,
   corners: 'round',
   introSeen: false,
   reducedMotion: false,
