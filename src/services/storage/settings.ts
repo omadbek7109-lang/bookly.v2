@@ -47,7 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   exportIncludeToc: true,
   reader: { fontSize: 18, lineHeight: 1.7, font: 'serif', mode: 'light' },
   profile: { name: '', avatarAssetId: null },
-  robot: { enabled: true, sounds: true, voice: false },
+  robot: { enabled: true, sounds: true, voice: true },
   robotIntroSeen: false,
   writingGoal: 300,
   cloudAutoSync: true,

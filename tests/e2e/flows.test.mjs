@@ -733,20 +733,35 @@ test('every screen and every sheet follows the chosen interface design (no hard-
   await ctx.close();
 });
 
-test('Buki the robot: greets once, gives tips per screen, guided tour, hides while writing, can be muted or switched off', async () => {
+test('Buki the robot: greets once, really talks (robot language when the phone has no voice), tips per screen, tour, hides while writing, can be muted or switched off', async () => {
   const { ctx, page } = await newPage({ width: 360, height: 740 });
+  // count synthesized sounds (Web Audio oscillators) — this is Buki's voice when the device has none
+  await ctx.addInitScript(() => {
+    window.__osc = 0;
+    const AC = window.AudioContext;
+    if (AC) { const orig = AC.prototype.createOscillator; AC.prototype.createOscillator = function () { window.__osc++; return orig.call(this); }; }
+  });
   await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('bookly.settings') || '{}'); s.robotIntroSeen = false; s.introSeen = true; localStorage.setItem('bookly.settings', JSON.stringify(s)); });
   await page.reload(); await page.waitForSelector('.home');
   await page.waitForSelector('[data-testid=robot-bubble]', { timeout: 5000 });
-  assert.match(await page.locator('[data-testid=robot-text]').innerText(), /Buki/);
+  assert.match(await page.getAttribute('[data-testid=robot-text]', 'data-full'), /Buki/);
   await page.click('[data-testid=robot-close]');
   await page.reload(); await page.waitForSelector('.home'); await page.waitForTimeout(1800);
   assert.equal(await page.locator('[data-testid=robot-bubble]').count(), 0, 'greets only once');
-  // tips change with the screen and "another tip" cycles
+  // he talks: headless Chrome has no speech voices → robot language, letter by letter, with sound
+  await page.evaluate(() => { window.__osc = 0; });
   await page.click('[data-testid=robot-button]');
-  const homeTip = await page.locator('[data-testid=robot-text]').innerText();
+  assert.equal(await page.getAttribute('[data-testid=robot-text]', 'data-voice'), 'robot');
+  const homeTip = await page.getAttribute('[data-testid=robot-text]', 'data-full');
+  await page.waitForTimeout(250);
+  const partial = await page.locator('[data-testid=robot-text] span[aria-hidden]').first().innerText().catch(() => '');
+  assert.ok(partial.length > 0 && partial.length < homeTip.length, `text types along with the voice (${partial.length}/${homeTip.length})`);
+  assert.ok(await page.evaluate(() => window.__osc) > 20, 'a sound for the letters');
+  assert.ok(await page.locator('.robot-btn-main .robot-face.is-talk').count() === 1, 'mouth moves while talking');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=robot-text] .robot-ghost'), null, { timeout: 15000 });
+  await page.waitForFunction(() => !document.querySelector('.robot-btn-main .robot-face.is-talk'), null, { timeout: 3000 }); // stops talking at the end
   await page.click('[data-testid=robot-next]');
-  assert.notEqual(await page.locator('[data-testid=robot-text]').innerText(), homeTip);
+  assert.notEqual(await page.getAttribute('[data-testid=robot-text]', 'data-full'), homeTip);
   const box = await page.locator('[data-testid=robot-bubble]').boundingBox();
   assert.ok(box.x >= 0 && box.x + box.width <= 360 && box.y >= 0, `bubble fits a small phone: ${JSON.stringify(box)}`);
   await page.screenshot({ path: path.join(OUT, 'robot-tip-360.png') });
@@ -754,13 +769,13 @@ test('Buki the robot: greets once, gives tips per screen, guided tour, hides whi
   await page.waitForTimeout(300);
   assert.equal(await page.locator('[data-testid=robot-bubble]').count(), 0, 'bubble closes on a new screen');
   await page.click('[data-testid=robot-button]');
-  assert.match(await page.locator('[data-testid=robot-text]').innerText(), /⋯|Qidiruv|Savat/);
-  await page.click('[data-testid=robot-close]');
-  // voice toggle: headless Chrome has no voices → says so instead of failing silently
-  await page.click('[data-testid=robot-button]');
+  assert.match(await page.getAttribute('[data-testid=robot-text]', 'data-full'), /⋯|Qidiruv|Savat/);
+  // voice off → full text at once, only a short chirp
   await page.click('[data-testid=robot-voice]');
+  await page.evaluate(() => { window.__osc = 0; });
   await page.click('[data-testid=robot-next]');
-  await page.waitForSelector('[data-testid=robot-bubble] small.muted');
+  assert.equal(await page.locator('[data-testid=robot-text] .robot-ghost').count(), 0, 'no typing when the voice is off');
+  assert.ok(await page.evaluate(() => window.__osc) <= 3, 'just a chirp');
   await page.click('[data-testid=robot-voice]');
   await page.click('[data-testid=robot-close]');
   // guided tour: 6 steps, "Show me" opens the screen
@@ -786,6 +801,34 @@ test('Buki the robot: greets once, gives tips per screen, guided tour, hides whi
   await page.waitForFunction(() => !document.querySelector('[data-testid=robot]'));
   await page.reload(); await page.waitForSelector('.profile, [data-testid=robot-settings]');
   assert.equal(await page.locator('[data-testid=robot]').count(), 0, 'stays off after reload');
+  await ctx.close();
+});
+
+test('Buki uses a real device voice when there is one (Uzbek text read by a Turkish voice when no Uzbek voice)', async () => {
+  const { ctx, page } = await newPage({ width: 390, height: 844 });
+  await ctx.addInitScript(() => {
+    window.__spoken = [];
+    const voices = [{ lang: 'tr-TR', name: 'Türkçe', default: false, localService: true, voiceURI: 'tr' }, { lang: 'en-US', name: 'English', default: true, localService: true, voiceURI: 'en' }];
+    window.SpeechSynthesisUtterance = function (text) { this.text = text; };
+    Object.defineProperty(window, 'speechSynthesis', { configurable: true, value: {
+      getVoices: () => voices, cancel() {}, speak(u) { window.__spoken.push({ text: u.text, lang: u.lang }); setTimeout(() => u.onend && u.onend(), 50); },
+    } });
+  });
+  await page.reload(); await page.waitForSelector('.home');
+  await page.click('[data-testid=robot-button]');
+  await page.waitForFunction(() => window.__spoken.length === 1);
+  const said = await page.evaluate(() => window.__spoken[0]);
+  assert.equal(said.lang, 'tr-TR');
+  assert.ok(!/[‘’ʻ]|sh|ch/.test(said.text), `respelled for the Turkish voice: ${said.text}`);
+  assert.equal(await page.getAttribute('[data-testid=robot-text]', 'data-voice'), 'voice');
+  // English app → English voice, text unchanged
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('bookly.settings') || '{}'); s.locale = 'en'; localStorage.setItem('bookly.settings', JSON.stringify(s)); });
+  await page.reload(); await page.waitForSelector('.home');
+  await page.click('[data-testid=robot-button]');
+  await page.waitForFunction(() => window.__spoken.length === 1);
+  const en = await page.evaluate(() => window.__spoken[0]);
+  assert.equal(en.lang, 'en-US');
+  assert.equal(en.text, await page.getAttribute('[data-testid=robot-text]', 'data-full'));
   await ctx.close();
 });
 

@@ -1397,3 +1397,6 @@ button.list-row:active { background: var(--accent-soft); }
 .admin .wipe-error { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .robot-btn-main { transition: transform .25s var(--ease), opacity .25s; }
 .robot.is-tucked .robot-btn-main { transform: translateX(46px) rotate(-12deg); opacity: .55; }
+.robot-ghost { visibility: hidden; }
+/* mouth moves for as long as Buki is talking (only while talking; idle Buki has no running animation) */
+.robot-btn-main .robot-face.is-talk .robot-mouth { animation-iteration-count: infinite; }

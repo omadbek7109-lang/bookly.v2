@@ -1,8 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSettings } from '../../app/AppContext';
 import { navigate, routes, useRoute } from '../../app/router';
 import { Icon } from '../../components/Icon';
 import type { MessageKey } from '../../i18n';
+import { audioContext, hushAll, speak, type SpeakHandle } from './voice';
 
 /**
  * Buki — the little helper robot. Round, friendly, explains the screen you are on.
@@ -46,49 +47,27 @@ export function RobotFace({ size = 56, mood = 'idle', blink = false }: { size?: 
   );
 }
 
-// ------------------------------------------------------------------ sounds & voice
-let audio: AudioContext | null = null;
+// ------------------------------------------------------------------ sounds
 /** A tiny two-note "beep-boop" made on the fly. kind: hello (rising), tip (soft), bye (falling). */
 export function chirp(kind: 'hello' | 'tip' | 'bye' = 'tip') {
+  const audio = audioContext();
+  if (!audio) return;
   try {
-    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AC) return;
-    audio ??= new AC();
-    if (audio.state === 'suspended') void audio.resume();
     const notes = kind === 'hello' ? [660, 990, 1320] : kind === 'bye' ? [880, 590] : [880, 1180];
     const t0 = audio.currentTime + 0.01;
     notes.forEach((f, i) => {
-      const o = audio!.createOscillator(); const g = audio!.createGain();
+      const o = audio.createOscillator(); const g = audio.createGain();
       o.type = 'sine';
       o.frequency.setValueAtTime(f, t0 + i * 0.09);
       o.frequency.exponentialRampToValueAtTime(f * 1.12, t0 + i * 0.09 + 0.07);
       g.gain.setValueAtTime(0.0001, t0 + i * 0.09);
       g.gain.exponentialRampToValueAtTime(0.07, t0 + i * 0.09 + 0.015);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.09 + 0.085);
-      o.connect(g).connect(audio!.destination);
+      o.connect(g).connect(audio.destination);
       o.start(t0 + i * 0.09); o.stop(t0 + i * 0.09 + 0.1);
     });
   } catch { /* audio blocked: stay quiet */ }
 }
-
-const LANG = { uz: ['uz'], ru: ['ru'], en: ['en'] } as const;
-/** Voice for the language, if the device has one (many phones have none for Uzbek). */
-export function voiceFor(locale: 'uz' | 'ru' | 'en'): SpeechSynthesisVoice | null {
-  try { return speechSynthesis.getVoices().find((v) => LANG[locale].some((l) => v.lang.toLowerCase().startsWith(l))) ?? null; } catch { return null; }
-}
-export function speak(text: string, locale: 'uz' | 'ru' | 'en', onEnd?: () => void): boolean {
-  try {
-    const v = voiceFor(locale);
-    if (!v) return false;
-    speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
-    u.voice = v; u.lang = v.lang; u.rate = 1.02; u.pitch = 1.35;
-    u.onend = () => onEnd?.(); u.onerror = () => onEnd?.();
-    speechSynthesis.speak(u);
-    return true;
-  } catch { return false; }
-}
-const hush = () => { try { speechSynthesis.cancel(); } catch { /* ignore */ } };
 
 // ------------------------------------------------------------------ tips
 const TIPS: Record<string, MessageKey[]> = {
@@ -131,17 +110,32 @@ export function RobotProvider({ children }: { children: ReactNode }) {
   const [tipIdx, setTipIdx] = useState(0);
   const [mood, setMood] = useState<Mood>('idle');
   const [blink, setBlink] = useState(false);
-  const [noVoice, setNoVoice] = useState(false);
+  const [shown, setShown] = useState<number | null>(null);
+  const [voiceMode, setVoiceMode] = useState<'' | 'voice' | 'robot'>('');
+  const handle = useRef<SpeakHandle | null>(null);
+  const token = useRef(0);
   const r = settings.robot;
   const visible = r.enabled && !HIDDEN.has(screen);
 
+  const hush = useCallback(() => { token.current++; handle.current?.stop(); handle.current = null; hushAll(); setShown(null); }, []);
+
   const talk = useCallback((line: string, sound: 'hello' | 'tip' | 'bye' = 'tip') => {
+    hush();
+    const my = token.current;
     setText(line); setOpen(true); setMood('talk');
-    if (r.sounds) chirp(sound);
-    let spoken = false;
-    if (r.voice) { spoken = speak(line, settings.locale, () => setMood('happy')); setNoVoice(!spoken); }
-    if (!spoken) window.setTimeout(() => setMood('happy'), Math.min(2400, 600 + line.length * 18));
-  }, [r.sounds, r.voice, settings.locale]);
+    if (r.voice) {
+      // Buki speaks: device voice if there is one, otherwise his own robot language with the text typing along
+      const h = speak(line, settings.locale, {
+        onProgress: (n) => { if (token.current === my) setShown(n >= line.length ? null : n); },
+        onEnd: () => { if (token.current === my) { setShown(null); setMood('happy'); } },
+      });
+      handle.current = h; setVoiceMode(h.mode);
+    } else {
+      setVoiceMode('');
+      if (r.sounds) chirp(sound);
+      window.setTimeout(() => { if (token.current === my) setMood('happy'); }, Math.min(2400, 600 + line.length * 18));
+    }
+  }, [r.sounds, r.voice, settings.locale, hush]);
 
   const tips = TIPS[screen] ?? TIPS.home;
   const nextTip = useCallback(() => {
@@ -214,8 +208,9 @@ export function RobotProvider({ children }: { children: ReactNode }) {
                   aria-label={t('robot.voice')} aria-pressed={r.voice} data-testid="robot-voice"><Icon name={r.voice ? 'music' : 'minus'} size={15} /></button>
                 <button type="button" className="robot-mini" onClick={close} aria-label={t('common.close')} data-testid="robot-close"><Icon name="x" size={15} /></button>
               </div>
-              <p data-testid="robot-text">{text}</p>
-              {r.voice && noVoice && <small className="muted">{t('robot.noVoice')}</small>}
+              <p data-testid="robot-text" data-full={text} data-voice={voiceMode}>
+                {shown === null ? text : <><span aria-hidden="true">{text.slice(0, shown)}</span><span className="robot-ghost" aria-hidden="true">{text.slice(shown)}</span><span className="sr-only">{text}</span></>}
+              </p>
               <div className="robot-actions">
                 {step ? (
                   <>
@@ -233,7 +228,7 @@ export function RobotProvider({ children }: { children: ReactNode }) {
           )}
           <button type="button" className={`robot-btn-main ${blink ? 'is-blink' : ''}`} onClick={() => (open ? close() : talk(t(tips[tipIdx]), 'hello'))}
             aria-label={t('robot.open')} aria-expanded={open} data-testid="robot-button">
-            <RobotFace mood={mood} blink={blink} size={54} />
+            <RobotFace mood={shown !== null ? 'talk' : mood} blink={blink} size={54} />
           </button>
         </div>
       )}
