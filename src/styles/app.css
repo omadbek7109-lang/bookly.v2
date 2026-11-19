@@ -1228,7 +1228,8 @@ button.list-row:active { background: var(--accent-soft); }
 .robot-btn-main:focus-visible { outline: none; box-shadow: var(--ring); }
 .robot.is-open .robot-btn-main { transform: rotate(-6deg); }
 .robot-face { display: block; overflow: visible; }
-.robot-face .robot-eye { transition: height .08s, y .08s; }
+.robot-face .robot-eye { transform-box: fill-box; transform-origin: center; transition: height .08s, y .08s, transform .08s; }
+.robot-btn-main.is-blink .robot-eye { transform: scaleY(.17); }
 .robot-face.is-talk .robot-mouth { transform-box: fill-box; transform-origin: center; animation: robotTalk .26s ease-in-out 6 alternate; }
 @keyframes robotTalk { from { transform: scaleY(.45); } to { transform: scaleY(1.15); } }
 .robot-face.is-happy { animation: robotHop .5s var(--ease) 1; }
@@ -1399,7 +1400,9 @@ button.list-row:active { background: var(--accent-soft); }
 .robot.is-tucked .robot-btn-main { transform: translateX(46px) rotate(-12deg); opacity: .55; }
 .robot-ghost { visibility: hidden; }
 /* mouth moves for as long as Buki is talking (only while talking; idle Buki has no running animation) */
-.robot-btn-main .robot-face.is-talk .robot-mouth { animation-iteration-count: infinite; }
+/* lip-sync: the mouth follows the spoken letters/words (an attribute set a few times a second), no endless animation */
+.robot-btn-main[data-lipsync] .robot-face.is-talk .robot-mouth { animation: none; transform: scaleY(.45); }
+.robot-btn-main[data-lipsync][data-mouth] .robot-face.is-talk .robot-mouth { transform: scaleY(1.15); }
 .admin-book { gap: 4px !important; }
 .admin-book strong { overflow-wrap: anywhere; }
 /* A sticky page header already pads itself below the status bar / Telegram buttons; pull it up over the page's

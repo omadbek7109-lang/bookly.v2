@@ -8,7 +8,7 @@ import { startServer } from '../../scripts/serve.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const server = await startServer(path.join(ROOT, 'dist'), 0, { base: '/bookly.v2/' });
-const base = `http://127.0.0.1:${server.address().port}/bookly.v2/?fastAI=1&noIntro=1`;
+const base = `http://127.0.0.1:${server.address().port}/bookly.v2/?noIntro=1`;
 const exe = ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser'].find((p) => fs.existsSync(p));
 const browser = await chromium.launch({ executablePath: exe, args: ['--no-sandbox'] });
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, colorScheme: 'dark', hasTouch: true, isMobile: true });
@@ -60,29 +60,35 @@ async function measure(label, ms, action) {
 const rows = [];
 await page.goto(base);
 await page.waitForSelector('.home');
-// a realistic library: create a few books through the app
+// a realistic library: bring in a few books the way a user would (Import → TXT)
+const para = 'Kitob yozish — fikrni tartibga solish, so‘zlarni tanlash va o‘quvchini bir sahifadan keyingisiga olib o‘tish san’ati. Har bir bob aniq maqsad bilan boshlanadi va amaliy misollar bilan davom etadi.';
 for (let i = 0; i < 3; i++) {
-  await go('#/create');
-  await page.fill('[data-testid=creator-topic]', `Issiqlik sinovi ${i + 1}`);
-  await page.click('[data-testid=creator-outline]');
-  await page.waitForSelector('[data-testid=outline-list] li');
-  await page.click('[data-testid=creator-write]');
-  await page.waitForFunction(() => document.querySelectorAll('.gen-item.is-done').length === document.querySelectorAll('.gen-item').length, null, { timeout: 60000 });
-  await page.click('[data-testid=creator-save-edit]');
+  const txt = [`# Issiqlik sinovi ${i + 1}`, ''];
+  for (let c = 1; c <= 4; c++) { txt.push(`# ${c}-bob`, ''); for (let k = 0; k < 8; k++) txt.push(para, ''); txt.push('- bir', '- ikki', '', '> Iqtibos', ''); }
+  await go('#/import');
+  await page.setInputFiles('[data-testid=import-input]', { name: `kitob${i}.txt`, mimeType: 'text/plain', buffer: Buffer.from(txt.join('\n')) });
+  await page.waitForSelector('[data-testid=import-save]');
+  await page.click('[data-testid=import-save]');
   await page.waitForSelector('[data-testid=editor]');
 }
 const bookUrl = await page.evaluate(() => location.hash);
 
-for (const [label, hash] of [['home idle', '#/'], ['library idle', '#/books'], ['studio idle', '#/studio'], ['profile idle', '#/profile'], ['about idle', '#/about'], ['editor idle', bookUrl]]) {
+for (const [label, hash] of [['home idle', '#/'], ['library idle', '#/books'], ['studio idle', '#/studio'], ['profile idle', '#/profile'], ['help idle', '#/help'], ['about idle', '#/about'], ['editor idle', bookUrl]]) {
   await go(hash); await page.waitForTimeout(300);
   rows.push(await measure(label, 6000));
 }
-for (const [label, hash] of [['library scroll', '#/books'], ['about scroll', '#/about']]) {
+for (const [label, hash] of [['library scroll', '#/books'], ['about scroll', '#/about'], ['profile scroll', '#/profile'], ['help scroll', '#/help']]) {
   await go(hash); await page.waitForTimeout(300);
   rows.push(await measure(label, 0, async () => {
     for (let i = 0; i < 30; i++) { await page.mouse.wheel(0, i % 15 < 8 ? 120 : -120); await page.waitForTimeout(100); }
   }));
 }
+// Buki talking (robot language) and then idle with the bubble open
+await go('#/');
+await page.waitForTimeout(300);
+rows.push(await measure('robot talking', 0, async () => { await page.click('[data-testid=robot-button]'); await page.waitForTimeout(5000); }));
+rows.push(await measure('robot bubble idle', 5000));
+await page.click('[data-testid=robot-close]').catch(() => {});
 const bookId = bookUrl.split('/')[2].split('?')[0];
 await go(`#/reader/${bookId}`);
 await page.waitForSelector('.reader-progress');

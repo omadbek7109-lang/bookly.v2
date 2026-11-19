@@ -925,7 +925,7 @@ test('battery / heat: no endless animations, no live blur, no fixed background; 
     const fixedBg = [document.documentElement, document.body].some((e) => getComputedStyle(e).backgroundAttachment.includes('fixed'));
     return { endless, blur, fixedBg };
   });
-  for (const hash of ['#/', '#/books', '#/studio', '#/profile', '#/about', '#/cloud', `#/editor/${id}`, `#/reader/${id}`]) {
+  for (const hash of ['#/', '#/books', '#/studio', '#/profile', '#/help', '#/about', '#/cloud', `#/editor/${id}`, `#/reader/${id}`]) {
     await go(page, hash);
     await page.waitForTimeout(900);
     const a = await audit();
@@ -948,6 +948,36 @@ test('battery / heat: no endless animations, no live blur, no fixed background; 
   events = r.scrolls;
   assert.ok(events >= 20, `scroll events fired: ${events}`);
   assert.ok(r.commits <= Math.ceil(events / 2), `reader re-rendered ${r.commits} times for ${events} scroll events`);
+
+  // Buki talking (robot language, letter by letter) must not re-render React for every letter, and his mouth
+  // moves by lip-sync instead of an endless animation.
+  await go(page, '#/help');
+  await page.waitForSelector('[data-testid=robot-button]');
+  await page.waitForTimeout(400);
+  await page.evaluate(() => { window.__commits = 0; window.__mouth = 0;
+    const btn = document.querySelector('.robot-btn-main');
+    new MutationObserver((ms) => { for (const m of ms) if (m.attributeName === 'data-mouth') window.__mouth++; }).observe(btn, { attributes: true }); });
+  await page.click('[data-testid=robot-button]');
+  const line = await page.getAttribute('[data-testid=robot-text]', 'data-full');
+  await page.waitForFunction(() => document.querySelector('[data-testid=robot-text] .robot-ghost'), null, { timeout: 2000 });
+  const mid = await audit();
+  assert.deepEqual(mid.endless, [], 'no endless animation while Buki talks');
+  await page.waitForFunction(() => !document.querySelector('.robot-btn-main .robot-face.is-talk'), null, { timeout: 15000 });
+  const talk = await page.evaluate(() => ({ commits: window.__commits, mouth: window.__mouth }));
+  assert.ok(line.length > 40, `a real tip (${line.length} chars)`);
+  assert.ok(talk.commits <= 8, `Buki said ${line.length} letters with ${talk.commits} React renders`);
+  assert.ok(talk.mouth >= 4, `mouth moved with the words (${talk.mouth} moves)`);
+  await page.click('[data-testid=robot-close]');
+
+  // Scrolling a page: Buki tucks away without a React render per scroll event.
+  await page.evaluate(() => { window.__commits = 0; window.__scrolls = 0; });
+  for (let i = 0; i < 30; i++) { await page.mouse.wheel(0, i < 15 ? 6 : -6); await page.waitForTimeout(30); }
+  await page.waitForTimeout(100);
+  const sc = await page.evaluate(() => ({ commits: window.__commits, scrolls: window.__scrolls, tucked: document.querySelector('.robot')?.classList.contains('is-tucked') }));
+  assert.ok(sc.scrolls >= 10, `scroll events fired: ${sc.scrolls}`);
+  assert.ok(sc.commits <= 2, `help page re-rendered ${sc.commits} times for ${sc.scrolls} scroll events`);
+  assert.equal(sc.tucked, true, 'Buki tucks away while scrolling');
+  await page.waitForFunction(() => !document.querySelector('.robot.is-tucked'), null, { timeout: 3000 });
   await ctx.close();
 });
 
