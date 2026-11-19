@@ -1,3 +1,4 @@
+import { track } from '../../services/stats/track';
 import { useMemo, useState } from 'react';
 import { useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes } from '../../app/router';
@@ -75,6 +76,7 @@ export default function NewBookPage() {
       book = applyTemplate(book, tpl);
       book.cover = coverFor(tpl);
       const saved = await books.save(book);
+      track('book_created', 'wizard');
       toast(t('wizard.created'), 'success');
       navigate(routes.editor(saved.id), { replace: true });
     } catch (e) {

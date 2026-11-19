@@ -262,6 +262,17 @@ export class CloudClient {
     return { status: res.status, body: (await res.json().catch(() => ({}))) as T };
   }
 
+  /** Reads a table that is public by policy (works signed out too). */
+  async publicSelect<T>(table: string, query: string): Promise<T[]> {
+    return this.json<T[]>(await this.raw(`/rest/v1/${table}?${query}`, { method: 'GET' }));
+  }
+
+  /** Light usage event for the admin statistics (signed-in only, never blocks, never throws). */
+  logEvent(kind: 'open' | 'book_created' | 'export' | 'telegram_send', detail?: string): void {
+    if (!this.session) return;
+    void this.rpc('bookly_log_event', { p_kind: kind, p_detail: detail ?? null }).catch(() => {});
+  }
+
   async rpc<T>(fn: string, args: Record<string, unknown>): Promise<T> {
     return this.json<T>(await this.authed(`/rest/v1/rpc/${fn}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(args) }));
   }

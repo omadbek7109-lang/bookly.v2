@@ -1,3 +1,4 @@
+import { track } from '../../services/stats/track';
 import { useRef, useState } from 'react';
 import { useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes } from '../../app/router';
@@ -32,6 +33,7 @@ export default function ImportPage() {
     if (!result) return;
     for (const a of result.assets) await assets.put(a.blob, a.name, a.id);
     const saved = await books.save(result.book);
+    track('book_created', 'import');
     toast(t('import.saved'), 'success');
     navigate(routes.editor(saved.id), { replace: true });
   };

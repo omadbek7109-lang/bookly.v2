@@ -8,6 +8,9 @@ import { isSingleText } from '../../models/book';
 import { createBackup, restoreBackup } from '../../services/storage/backup';
 import { WipeSheet } from './WipeSheet';
 import { SkinPicker } from './SkinPicker';
+import { WritingCard } from './WritingCard';
+import { useIsAdmin } from '../../services/admin/api';
+import { useRobot, RobotFace } from '../robot/Robot';
 import { navigate, routes } from '../../app/router';
 import { storageEstimate } from '../../services/storage/db';
 import { assets } from '../../services/storage/repository';
@@ -29,7 +32,9 @@ export default function ProfilePage() {
   const cloud = useCloud();
   const status = useAccountStatus();
   const [usage, setUsage] = useState<number | null>(null);
-  const [sheet, setSheet] = useState<null | 'edit' | 'privacy' | 'help' | 'wipe'>(null);
+  const [sheet, setSheet] = useState<null | 'edit' | 'privacy' | 'wipe'>(null);
+  const isAdmin = useIsAdmin();
+  const robot = useRobot();
   const [exportOpen, setExportOpen] = useState(false);
   const avatarInput = useRef<HTMLInputElement>(null);
   const restoreInput = useRef<HTMLInputElement>(null);
@@ -91,6 +96,15 @@ export default function ProfilePage() {
         <div className="stat glass"><strong>{chapterCount}</strong><span>{t('profile.myChapters')}</span></div>
       </div>
 
+      {/* B2. Writing goal, streak, achievements */}
+      <WritingCard />
+
+      {isAdmin && (
+        <div className="list glass admin-entry">
+          <ListRow icon="shield" title={t('admin.title')} subtitle={t('admin.entry')} onClick={() => navigate(routes.admin())} testId="profile-admin" />
+        </div>
+      )}
+
       {/* C. Settings */}
       <h2 className="sub-title">{t('profile.settings')}</h2>
       <div className="glass options-card">
@@ -105,6 +119,20 @@ export default function ProfilePage() {
         <SkinPicker />
         <Switch id="rm" label={t('profile.reducedMotion')} checked={settings.reducedMotion} onChange={(v) => update({ reducedMotion: v })} />
         <p className="muted small setting-hint">{t('profile.reducedMotionHint')}</p>
+      </div>
+
+      {/* C2. Buki the robot */}
+      <h2 className="sub-title">{t('robot.settings')}</h2>
+      <div className="glass options-card robot-card" data-testid="robot-settings">
+        <div className="robot-card-head">
+          <RobotFace size={52} mood="happy" />
+          <p className="muted small">{t('robot.settingsText')}</p>
+        </div>
+        <Switch id="rb-on" label={t('robot.enabled')} checked={settings.robot.enabled} onChange={(v) => update({ robot: { ...settings.robot, enabled: v } })} />
+        <Switch id="rb-snd" label={t('robot.sounds')} checked={settings.robot.sounds} onChange={(v) => update({ robot: { ...settings.robot, sounds: v } })} />
+        <Switch id="rb-voice" label={t('robot.voice')} checked={settings.robot.voice} onChange={(v) => update({ robot: { ...settings.robot, voice: v } })} />
+        <p className="muted small setting-hint">{t('robot.voiceHint')}</p>
+        <Button variant="secondary" icon="play" onClick={robot.startTour} data-testid="robot-tour">{t('help.tour')}</Button>
       </div>
 
       {/* D. Default export — one compact row that opens the options */}
@@ -152,7 +180,7 @@ export default function ProfilePage() {
       <div className="list glass">
         <ListRow icon="info" title={t('profile.about')} onClick={() => navigate(routes.about())} testId="profile-about" />
         <ListRow icon="shield" title={t('profile.privacy')} onClick={() => setSheet('privacy')} />
-        <ListRow icon="help" title={t('profile.help')} onClick={() => setSheet('help')} testId="help" />
+        <ListRow icon="help" title={t('profile.help')} subtitle={t('profile.helpSub')} onClick={() => navigate(routes.help())} testId="help" />
         <ListRow icon="code" title={t('profile.versionLabel')} subtitle={__BOOKLY_VERSION__} />
       </div>
 
@@ -169,14 +197,8 @@ export default function ProfilePage() {
         </div>
       </Sheet>
 
-      <Sheet open={sheet === 'privacy' || sheet === 'help'} onClose={() => setSheet(null)} size="sm"
-        title={sheet === 'privacy' ? t('profile.privacy') : t('profile.help')}>
-        {sheet === 'privacy' && <p>{t('profile.privacyText')}</p>}
-        {sheet === 'help' && (
-          <ol className="help-steps">
-            {([1, 2, 3, 4, 5] as const).map((n) => <li key={n}><strong>{t(`profile.help${n}t`)}</strong> {t(`profile.help${n}`)}</li>)}
-          </ol>
-        )}
+      <Sheet open={sheet === 'privacy'} onClose={() => setSheet(null)} size="sm" title={t('profile.privacy')}>
+        <p>{t('profile.privacyText')}</p>
       </Sheet>
     </div>
   );

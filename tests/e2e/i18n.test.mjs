@@ -121,8 +121,11 @@ for (const locale of ['ru', 'en', 'uz']) {
     await checkScreen(page, locale, 'profile-edit');
     await page.keyboard.press('Escape');
     await page.click('[data-testid=help]');
+    await page.waitForSelector('[data-testid=help-page]');
+    await page.locator('[data-testid=help-faq] .faq-q').first().click();
     await checkScreen(page, locale, 'help');
-    await page.keyboard.press('Escape');
+    await go(page, '#/profile');
+    await page.waitForSelector('[data-testid=clear-all]');
     await page.click('[data-testid=clear-all]');
     await checkScreen(page, locale, 'wipe-dialog');
     await page.keyboard.press('Escape');

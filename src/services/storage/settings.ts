@@ -21,6 +21,11 @@ export interface Settings {
   exportIncludeToc: boolean;
   reader: { fontSize: number; lineHeight: number; font: 'serif' | 'sans'; mode: 'light' | 'sepia' | 'dark' };
   profile: { name: string; avatarAssetId: string | null };
+  /** Buki, the little helper robot: shown at all, cute sounds, reading tips aloud. */
+  robot: { enabled: boolean; sounds: boolean; voice: boolean };
+  robotIntroSeen: boolean;
+  /** Daily writing goal in words. */
+  writingGoal: number;
   /** Optional cloud backup: sync automatically while signed in. */
   cloudAutoSync: boolean;
   /** The "back up your local books?" question was answered for this account id. */
@@ -42,6 +47,9 @@ export const DEFAULT_SETTINGS: Settings = {
   exportIncludeToc: true,
   reader: { fontSize: 18, lineHeight: 1.7, font: 'serif', mode: 'light' },
   profile: { name: '', avatarAssetId: null },
+  robot: { enabled: true, sounds: true, voice: false },
+  robotIntroSeen: false,
+  writingGoal: 300,
   cloudAutoSync: true,
   cloudPromptedFor: null,
 };
@@ -52,7 +60,7 @@ export function loadSettings(): Settings {
     const merged = { ...DEFAULT_SETTINGS, ...raw };
     if (!SKINS.includes(merged.skin)) merged.skin = 'bookly';
     if (!['round', 'soft', 'sharp'].includes(merged.corners)) merged.corners = 'round';
-    return { ...merged, reader: { ...DEFAULT_SETTINGS.reader, ...(raw.reader || {}) }, profile: { ...DEFAULT_SETTINGS.profile, ...(raw.profile || {}) } };
+    return { ...merged, reader: { ...DEFAULT_SETTINGS.reader, ...(raw.reader || {}) }, profile: { ...DEFAULT_SETTINGS.profile, ...(raw.profile || {}) }, robot: { ...DEFAULT_SETTINGS.robot, ...(raw.robot || {}) } };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }

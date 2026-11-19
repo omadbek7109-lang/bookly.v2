@@ -1,3 +1,4 @@
+import { track } from '../services/stats/track';
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { LibraryProvider, SettingsProvider, UiProvider, useLibrary, useSettings, useT } from './AppContext';
 import { navigate, routes, useRoute } from './router';
@@ -11,6 +12,8 @@ import { tr, type MessageKey } from '../i18n';
 import { CloudProvider } from '../features/cloud/CloudContext';
 import { useKeyboardInset } from '../hooks/useAssetUrl';
 import { BackupPromptSheet, NewPasswordSheet } from '../features/cloud/AuthSheet';
+import { RobotProvider } from '../features/robot/Robot';
+import { AnnouncementBar } from '../features/home/AnnouncementBar';
 
 const PAGE_LOADERS = {
   LibraryPage: () => import('../features/library/LibraryPage'),
@@ -25,6 +28,8 @@ const PAGE_LOADERS = {
   ImportPage: () => import('../features/import/ImportPage'),
   CloudPage: () => import('../features/cloud/CloudPage'),
   AboutPage: () => import('../features/about/AboutPage'),
+  AdminPage: () => import('../features/admin/AdminPage'),
+  HelpPage: () => import('../features/help/HelpPage'),
 };
 
 /** Loads every screen in the background once the app is idle, so they keep working offline. */
@@ -46,12 +51,14 @@ const ExportPage = lazy(PAGE_LOADERS.ExportPage);
 const ImportPage = lazy(PAGE_LOADERS.ImportPage);
 const CloudPage = lazy(PAGE_LOADERS.CloudPage);
 const AboutPage = lazy(PAGE_LOADERS.AboutPage);
+const AdminPage = lazy(PAGE_LOADERS.AdminPage);
+const HelpPage = lazy(PAGE_LOADERS.HelpPage);
 
 const TABS: { path: string; icon: IconName; label: MessageKey; match: (p: string) => boolean }[] = [
   { path: routes.home(), icon: 'home', label: 'nav.home', match: (p) => p === '/' },
   { path: routes.books(), icon: 'bookOpen', label: 'nav.books', match: (p) => p.startsWith('/books') },
   { path: routes.studio(), icon: 'layers', label: 'nav.studio', match: (p) => p.startsWith('/studio') || p.startsWith('/templates') || p.startsWith('/create') || p.startsWith('/cover') || p.startsWith('/export') || p.startsWith('/import') },
-  { path: routes.profile(), icon: 'user', label: 'nav.profile', match: (p) => p.startsWith('/profile') || p.startsWith('/cloud') },
+  { path: routes.profile(), icon: 'user', label: 'nav.profile', match: (p) => p.startsWith('/profile') || p.startsWith('/cloud') || p.startsWith('/admin') || p.startsWith('/help') || p.startsWith('/about') },
 ];
 
 const SIDE: { path: string; icon: IconName; label: MessageKey; match: (p: string) => boolean }[] = [
@@ -75,6 +82,7 @@ export function CreateSheet({ open, onClose }: { open: boolean; onClose: () => v
   const newBlank = async () => {
     onClose();
     const b = await books.save(createBook({ title: title.trim() || t('common.untitled'), layout, language: locale }));
+    track('book_created', 'blank');
     navigate(routes.editor(b.id));
   };
   const go = (to: string) => () => { onClose(); navigate(to); };
@@ -122,6 +130,7 @@ function Shell() {
   const [createOpen, setCreateOpen] = useState(false);
   const immersive = isImmersive(route.path);
   const { error } = useLibrary();
+  const { settings } = useSettings();
 
   let page: ReactNode;
   const [a, b] = route.parts;
@@ -139,11 +148,13 @@ function Shell() {
     case 'import': page = <ImportPage />; break;
     case 'cloud': page = <CloudPage />; break;
     case 'about': page = <AboutPage />; break;
+    case 'admin': page = <AdminPage />; break;
+    case 'help': page = <HelpPage />; break;
     default: page = <EmptyState icon="alert" title={t('notFound.title')} action={<Button onClick={() => navigate('/')}>{t('nav.home')}</Button>} />;
   }
 
   return (
-    <div className={`shell ${immersive ? 'is-immersive' : ''}`}>
+    <div className={`shell ${immersive ? 'is-immersive' : ''} ${settings.robot.enabled ? 'has-robot' : ''}`}>
       {!immersive && (
         <aside className="sidenav" aria-label={t('nav.main')}>
           <a className="brand" href="#/"><span className="brand-mark"><Icon name="bookOpen" size={20} /></span><span><b>{t('app.name')}</b><small>{t('app.tagline')}</small></span></a>
@@ -159,6 +170,7 @@ function Shell() {
       )}
       <main className="main" id="main">
         {error && <div className="banner banner-error" role="alert"><Icon name="alert" size={18} /> {t('error.storage')} <small>({error})</small></div>}
+        {!immersive && <AnnouncementBar />}
         <Suspense fallback={<div className="page-loading"><Spinner label={t('common.loading')} /></div>}>
           <ErrorBoundary>{page}</ErrorBoundary>
         </Suspense>
@@ -221,7 +233,9 @@ export function App() {
       <UiProvider>
         <LibraryProvider>
           <CloudProvider>
-            <Root />
+            <RobotProvider>
+              <Root />
+            </RobotProvider>
           </CloudProvider>
         </LibraryProvider>
       </UiProvider>

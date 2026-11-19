@@ -127,3 +127,18 @@ Measured with `npm run perf:heat` (Chrome counters + all-thread trace, CPU slowe
       plus corner style (round/soft/sharp); applied before first paint; Telegram header follows the design.
 - [x] Fixes: scrollable tab rows fade instead of clipping, page titles scale on narrow phones, wizard is full-screen,
       home declutter (duplicate quick-start section removed), version 2.1.0.
+
+## Help center, Buki robot, writing goals, admin panel (2026-11-19)
+- [x] Help center page (#/help): 4-step journey, 12 searchable FAQ answers with "show me" buttons, guided tour,
+      feedback form (goes to admins in Telegram).
+- [x] Buki, the helper robot: tips per screen, 6-step guided tour, tiny Web Audio chirps, optional read-aloud
+      (device voice), hides in the editor/reader and tucks aside while scrolling; switches in Profile.
+- [x] Writing goal (150/300/500/1000 words a day), streak, last-7-days bars and 8 achievements (on the device).
+- [x] Admin panel (#/admin, Telegram ids in Edge Function secret BOOKLY_ADMIN_IDS): statistics + 14-day chart,
+      broadcast to bot subscribers (text, **bold**/__italic__, photo, link button, test-to-me, live progress,
+      stop, blocked users skipped), user search + personal message, in-app announcement banner, feedback inbox
+      with replies, audit log. Function `admin` deployed; bot v2 deployed (remembers subscribers).
+- [ ] Owner: apply migrations 20261107140000_bookly_book_wipe and 20261119100000_bookly_admin; set
+      BOOKLY_ADMIN_IDS. Until then the panel/feedback say "not enabled yet" and delete-all uses the user's own session.
+- [x] Fixed: an admin received his own broadcast twice; announcements are loaded only when signed in.
+- [x] Tests: unit 71/71; e2e flows 26, cloud 13, i18n 6 — all pass.

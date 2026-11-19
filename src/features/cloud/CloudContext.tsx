@@ -1,3 +1,4 @@
+import { trackOpenOnce } from '../../services/stats/track';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSettings, useUi } from '../../app/AppContext';
 import { tr } from '../../i18n';
@@ -77,7 +78,8 @@ export function CloudProvider({ children }: { children: ReactNode }) {
   // Session & engine state
   useEffect(() => {
     if (!svc) return;
-    const offSession = svc.client.onSessionChange((s) => { setUser(s?.user ?? null); if (!s) svc.engine.reset(); });
+    const offSession = svc.client.onSessionChange((s) => { setUser(s?.user ?? null); if (!s) svc.engine.reset(); else trackOpenOnce(); });
+    if (svc.client.user) trackOpenOnce();
     const offEngine = svc.engine.subscribe(setSnapshot);
     return () => { offSession(); offEngine(); };
   }, [svc]);

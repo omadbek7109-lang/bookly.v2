@@ -394,6 +394,132 @@ test('delete all books (signed in): server 4-digit code, wrong/locked/replay rej
   await ctx.close();
 });
 
+/** A device inside Telegram, signed in automatically as the given Telegram user. */
+async function telegramDevice(fake, tgUser, { width = 390, height = 844 } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, colorScheme: 'dark' });
+  const user = JSON.stringify(tgUser);
+  const initData = new URLSearchParams({ user, auth_date: String(Math.floor(Date.now() / 1000)), hash: 'test-valid-hash' }).toString();
+  await ctx.route('https://telegram.org/**', (route) => route.fulfill({ status: 200, contentType: 'text/javascript', headers: CORS,
+    body: `window.Telegram={WebApp:{initData:${JSON.stringify(initData)},initDataUnsafe:{user:${user}},ready(){},expand(){},disableVerticalSwipes(){},setHeaderColor(){},setBackgroundColor(){},HapticFeedback:{impactOccurred(){},notificationOccurred(){}}}};` }));
+  await ctx.route(`${SUPA}/**`, async (route) => {
+    const req = route.request();
+    if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: CORS, body: '' });
+    const r = await fake.handle(req.method(), req.url(), req.headers(), req.postDataBuffer());
+    await route.fulfill({ status: r.status, headers: { ...CORS, ...r.headers }, body: r.body });
+  });
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => pageErrors.push(e.message));
+  await page.goto(`${origin}${SITE_BASE}?noIntro=1#tgWebAppData=${encodeURIComponent(initData)}&tgWebAppVersion=8.0&tgWebAppPlatform=android`);
+  await page.waitForSelector('.home');
+  await waitFor(() => [...fake.state.users.values()].some((u) => Number(u.meta?.telegram_id) === tgUser.id), 'telegram sign-in', 10000);
+  await answerPrompt(page);
+  return { ctx, page };
+}
+
+test('admin panel: only admins get in; stats, broadcast with photo to subscribers (blocked ones skipped), personal message, announcement, feedback inbox', async () => {
+  const ADMIN = 900001, USER = 900002;
+  const fake = createFakeSupabase({ adminTelegramIds: [ADMIN] });
+  // bot subscribers (people who pressed /start); one of them blocked the bot
+  for (const id of [USER, 900010, 900011, 900012]) fake.state.subscribers.push({ telegram_id: id, first_name: `U${id}`, username: null, blocked: false });
+  fake.state.subscribers.push({ telegram_id: ADMIN, first_name: 'Admin', username: 'boss', blocked: false });
+  fake.blockingIds.add(900012);
+
+  // an ordinary user: no admin entry, the admin route says "no access", can send feedback
+  const u = await telegramDevice(fake, { id: USER, first_name: 'Dilnoza', username: 'dilnoza' });
+  await go(u.page, '#/profile');
+  await u.page.waitForSelector('[data-testid=account-email]');
+  await u.page.waitForTimeout(600);
+  assert.equal(await u.page.locator('[data-testid=profile-admin]').count(), 0, 'no admin entry for ordinary users');
+  await go(u.page, '#/admin');
+  await u.page.waitForSelector('[data-testid=admin-page] .empty');
+  assert.match(await u.page.locator('[data-testid=admin-page]').innerText(), /Ruxsat yo‘q/);
+  const forged = await fake.handle('POST', `${SUPA}/functions/v1/admin`, { authorization: `Bearer ${await u.page.evaluate(() => JSON.parse(localStorage.getItem('bookly.auth')).access_token)}` }, Buffer.from(JSON.stringify({ action: 'broadcast', text: 'hack' })));
+  assert.equal(forged.status, 403, 'server refuses non-admins');
+  await go(u.page, '#/help');
+  await u.page.fill('[data-testid=help-feedback]', 'PDF’da rasm kichik chiqyapti');
+  await u.page.click('[data-testid=help-feedback-send]');
+  await u.page.waitForSelector('[data-testid=help-thanks]');
+  assert.equal(fake.state.feedback.length, 1);
+  assert.ok(fake.botMessages.some((m) => m.chat_id === ADMIN && /PDF’da rasm/.test(m.text)), 'admins are told about new feedback at once');
+
+  // the admin
+  const a = await telegramDevice(fake, { id: ADMIN, first_name: 'Bosh', username: 'boss' }, { width: 360, height: 760 });
+  await go(a.page, '#/profile');
+  await a.page.click('[data-testid=profile-admin]');
+  await a.page.waitForSelector('[data-testid=admin-stats] .kpi');
+  const kpis = await a.page.locator('.kpi strong').allInnerTexts();
+  assert.equal(kpis[0], '2', 'two users');
+  await a.page.screenshot({ path: path.join(OUT, 'admin-stats-360.png'), fullPage: true });
+
+  // broadcast: test to me first, then everyone (with a photo)
+  await a.page.getByRole('tab', { name: 'Xabar yuborish' }).click();
+  await a.page.fill('[data-testid=admin-text]', '**Yangilik!** Bookly’da 6 xil dizayn <bor>');
+  assert.match(await a.page.locator('[data-testid=admin-preview]').innerHTML(), /<b>Yangilik!<\/b>.*&lt;bor&gt;/, 'preview shows formatting and escapes HTML');
+  await a.page.setInputFiles('[data-testid=admin-photo]', { name: 'p.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') });
+  await a.page.waitForSelector('[data-testid=admin-preview] img');
+  await a.page.click('[data-testid=admin-test]');
+  await waitFor(() => fake.botMessages.some((m) => m.chat_id === ADMIN && m.photo && /<b>Yangilik!<\/b>/.test(m.text)), 'test message to the admin');
+  const before = fake.botMessages.length;
+  await a.page.click('[data-testid=admin-send]');
+  await a.page.click('[data-testid=dialog-confirm]');
+  await a.page.waitForSelector('[data-testid=broadcast-list] li[data-status=done]', { timeout: 10000 });
+  const sentNow = fake.botMessages.slice(before).map((m) => m.chat_id).sort();
+  // the admin gets one preview (not a second copy); every other subscriber except the one who blocked the bot
+  assert.deepEqual(sentNow, [ADMIN, USER, 900010, 900011].sort(), 'each person exactly once');
+  assert.equal(fake.state.subscribers.find((x) => x.telegram_id === 900012).blocked, true, 'blocked subscriber is marked');
+  assert.match(await a.page.locator('[data-testid=broadcast-list] li').first().innerText(), /4\/5/);
+  await a.page.screenshot({ path: path.join(OUT, 'admin-broadcast-360.png'), fullPage: true });
+
+  // users: search, open, personal message
+  await a.page.getByRole('tab', { name: 'Foydalanuvchilar' }).click();
+  await a.page.fill('[data-testid=admin-user-search]', 'Dilnoza');
+  await a.page.waitForFunction(() => document.querySelectorAll('[data-testid=admin-users] li').length === 1);
+  await a.page.locator('[data-testid=admin-users] li button').click();
+  await a.page.locator('.sheet [data-testid=admin-text]').fill('Salom, Dilnoza! Fikringiz uchun rahmat.');
+  await a.page.locator('.sheet [data-testid=admin-send]').click();
+  await waitFor(() => fake.botMessages.some((m) => m.chat_id === USER && /Salom, Dilnoza/.test(m.text)), 'personal message');
+  await a.page.keyboard.press('Escape');
+
+  // announcement → everyone sees it at the top of the app and can close it
+  await a.page.getByRole('tab', { name: 'E’lon' }).click();
+  await a.page.fill('[data-testid=announce-text]', 'Yangi dizaynlar qo‘shildi!');
+  await a.page.click('[data-testid=announce-publish]');
+  await a.page.waitForSelector('[data-testid=announce-list] li');
+  await u.page.goto('about:blank');
+  await u.page.goto(`${origin}${SITE_BASE}?noIntro=1#/`);
+  await u.page.waitForSelector('[data-testid=announcement]');
+  assert.match(await u.page.locator('[data-testid=announcement]').innerText(), /Yangi dizaynlar/);
+  await u.page.click('[data-testid=announcement-close]');
+  await u.page.reload();
+  await u.page.waitForSelector('.home');
+  await u.page.waitForTimeout(600);
+  assert.equal(await u.page.locator('[data-testid=announcement]').count(), 0, 'closed announcement stays closed');
+
+  // feedback inbox → reply goes to the user's Telegram
+  await a.page.getByRole('tab', { name: 'Murojaatlar' }).click();
+  await a.page.waitForSelector('[data-testid=feedback-list] li');
+  await a.page.click('[data-testid=feedback-reply]');
+  await a.page.fill('[data-testid=feedback-reply-text]', 'Tuzatdik, yangilab ko‘ring!');
+  await a.page.click('[data-testid=feedback-send]');
+  await waitFor(() => fake.botMessages.some((m) => m.chat_id === USER && /Tuzatdik/.test(m.text)), 'reply delivered');
+  assert.equal(fake.state.feedback[0].status, 'answered');
+  await a.ctx.close(); await u.ctx.close();
+});
+
+test('admin panel says so plainly when the server part is not set up', async () => {
+  const fake = createFakeSupabase({ adminTelegramIds: [900001], adminReady: false });
+  const a = await telegramDevice(fake, { id: 900001, first_name: 'Bosh' });
+  await go(a.page, '#/admin');
+  await a.page.waitForSelector('[data-testid=admin-page] .wipe-error, [data-testid=admin-page] .empty');
+  assert.match(await a.page.locator('[data-testid=admin-page]').innerText(), /serverda hali yoqilmagan/);
+  await go(a.page, '#/help');
+  await a.page.fill('[data-testid=help-feedback]', 'Salom');
+  await a.page.click('[data-testid=help-feedback-send]');
+  await a.page.waitForSelector('.toast');
+  assert.match(await a.page.locator('.toast').last().innerText(), /hali yoqilmagan/);
+  await a.ctx.close();
+});
+
 test('delete all books still works when the server code check is not set up: code checked on the device, cloud copies removed with the user\'s own session', async () => {
   const fake = createFakeSupabase({ wipeReady: false });
   const other = await device(fake);

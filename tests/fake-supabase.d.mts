@@ -10,6 +10,9 @@ export interface FakeSupabase {
   setOnline(v: boolean): void;
   confirm(email: string): void;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  state: { users: Map<string, any>; books: any[]; chapters: any[]; assets: any[]; objects: Map<string, any>; sync: any[] };
+  state: { users: Map<string, any>; books: any[]; chapters: any[]; assets: any[]; objects: Map<string, any>; sync: any[]; subscribers: any[]; broadcasts: any[]; announcements: any[]; feedback: any[]; events: any[]; audit: any[] };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  botMessages: any[];
+  blockingIds: Set<number>;
 }
-export function createFakeSupabase(opts?: { requireConfirmation?: boolean; aiConfigured?: boolean; wipeTtlMs?: number; wipeReady?: boolean }): FakeSupabase;
+export function createFakeSupabase(opts?: { requireConfirmation?: boolean; aiConfigured?: boolean; wipeTtlMs?: number; wipeReady?: boolean; adminTelegramIds?: number[]; adminReady?: boolean; broadcastPerRun?: number }): FakeSupabase;

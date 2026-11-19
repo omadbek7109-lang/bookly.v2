@@ -9,7 +9,7 @@ const keys = Object.keys(uz) as (keyof typeof uz)[];
 const vars = (s: string) => [...s.matchAll(/\{(\w+)(?:\|[^}]*)?\}/g)].map((m) => m[1]).sort().filter((v, i, a) => a.indexOf(v) === i).join(',');
 
 /** Words that are the same in every language (product, format and file names). */
-const NEUTRAL = /\b(Bookly|Telegram|PDF|EPUB|DOCX|PPTX|TXT|Word|PowerPoint|Email|email|PNG|JPG|XML|OPF|SVG|META-INF|txt|docx|epub|pdf|pptx|Unicode|container|xml|word|document|Heading|A4|A5|KB|MB|B|Letter|MB|KB|start|DEMO|AI|uz|ru|en|v|f|n|i|p|a|c|B|I|U|kod|code|size|name|title|msg|time|done|total|up|down|href|word|email|mb)\b/g;
+const NEUTRAL = /\b(Bookly|Telegram|PDF|EPUB|DOCX|PPTX|TXT|Word|PowerPoint|Email|email|PNG|JPG|XML|OPF|SVG|META-INF|txt|docx|epub|pdf|pptx|Unicode|container|xml|word|document|Heading|A4|A5|KB|MB|B|Letter|MB|KB|start|DEMO|AI|uz|ru|en|v|f|n|i|p|a|c|B|I|U|kod|code|size|name|title|msg|time|done|total|up|down|href|word|email|mb|ID|WEBP|username)\b/g;
 
 test('every interface text exists in Uzbek, Russian and English with the same placeholders', () => {
   for (const [name, dict] of [['ru', ru], ['en', en]] as const) {
@@ -25,11 +25,11 @@ test('no language mixes in another script', () => {
   for (const k of keys) {
     assert.ok(!/[А-Яа-яЁёЎўҚқҒғҲҳ]/.test(uz[k]), `uz.${k} is Latin Uzbek: ${uz[k]}`);
     assert.ok(!/[А-Яа-яЁё]/.test(en[k]), `en.${k} has no Cyrillic: ${en[k]}`);
-    const latinLeft = ru[k].replace(/\{[^}]*\}/g, '').replace(NEUTRAL, '').match(/[A-Za-z]{2,}/g);
+    const latinLeft = ru[k].replace(/@\w+/g, '').replace(/\{[^}]*\}/g, '').replace(NEUTRAL, '').match(/[A-Za-z]{2,}/g);
     assert.equal(latinLeft, null, `ru.${k} has no stray Latin words: ${ru[k]} → ${latinLeft}`);
   }
   // typical Uzbek-only letters/words never leak into ru/en
-  for (const k of keys) for (const [n, s] of [['ru', ru[k]], ['en', en[k]]]) assert.ok(!/[‘’]\w|o‘|g‘|\b(va|uchun|kitob|bob)\b/.test(s) || /’s\b|’t\b|’re\b|’ll\b/.test(s), `${n}.${k} has no Uzbek: ${s}`);
+  for (const k of keys) for (const [n, s] of [['ru', ru[k]], ['en', en[k]]]) assert.ok(!/[‘’]\w|o‘|g‘|\b(va|uchun|kitob|bob)\b/.test(s) || /’s\b|’t\b|’re\b|’ll\b|’m\b|’ve\b|’d\b/.test(s), `${n}.${k} has no Uzbek: ${s}`);
 });
 
 test('plural forms follow each language', () => {

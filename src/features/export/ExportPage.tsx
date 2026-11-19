@@ -1,3 +1,5 @@
+import { addExport } from '../../services/stats/writing';
+import { track } from '../../services/stats/track';
 import { useEffect, useMemo, useState } from 'react';
 import { useLibrary, useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes } from '../../app/router';
@@ -52,6 +54,7 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
     try {
       await sendFileToTelegram(out.bytes, out.filename, out.mime, book ? `📘 ${book.title}` : '');
       setSent(out.filename);
+      track('telegram_send', format);
       haptic('success');
       toast(t('export.sentTg'), 'success');
     } catch (e) {
@@ -77,6 +80,8 @@ export default function ExportPage({ bookId }: { bookId?: string }) {
       const out = await exportBook(book, format, opts);
       if (!out.bytes.length) throw new Error('empty file');
       setLast(out);
+      addExport();
+      track('export', format);
       history.unshift({ name: out.filename, size: out.bytes.length, at: Date.now(), out });
       history.splice(6);
       refresh((x) => x + 1);

@@ -60,4 +60,6 @@ export const routes = {
   import: () => '/import',
   cloud: () => '/cloud',
   about: () => '/about',
+  admin: () => '/admin',
+  help: () => '/help',
 };

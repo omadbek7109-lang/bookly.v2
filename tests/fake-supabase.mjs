@@ -8,8 +8,14 @@ import crypto from 'node:crypto';
 let seq = 0;
 const nextId = (p) => `${p}-${(++seq).toString(16).padStart(8, '0')}-0000-4000-8000-000000000000`.slice(0, 36);
 
-export function createFakeSupabase({ requireConfirmation = false, aiConfigured = false, wipeTtlMs, wipeReady = true } = {}) {
-  const opts = { aiConfigured, wipeTtlMs, wipeReady };
+export function createFakeSupabase({ requireConfirmation = false, aiConfigured = false, wipeTtlMs, wipeReady = true, adminTelegramIds = [], adminReady = true, broadcastPerRun = 1000 } = {}) {
+  const opts = { aiConfigured, wipeTtlMs, wipeReady, adminReady, broadcastPerRun };
+  const adminIds = new Set(adminTelegramIds.map(Number));
+  // admin side (mirrors supabase/functions/admin + migration 20261119100000_bookly_admin)
+  const subscribers = []; // {telegram_id, first_name, username, blocked}
+  const broadcasts = []; const announcements = []; const feedback = []; const events = []; const audit = [];
+  const botMessages = []; // every message the bot "sent": {chat_id, text, photo}
+  const blockingIds = new Set(); // these chats answer 403 (user blocked the bot)
   const users = new Map(); // email -> {id,email,password,confirmed,meta}
   const tokens = new Map(); // access token -> userId
   const refreshTokens = new Map();
@@ -112,6 +118,108 @@ export function createFakeSupabase({ requireConfirmation = false, aiConfigured =
       if (!user) { user = { id: nextId('u'), email, password: null, confirmed: true, meta: { display_name: [tg.first_name, tg.last_name].filter(Boolean).join(' '), telegram_id: tg.id } }; users.set(email, user); }
       return json(200, issue(user));
     }
+    if (path === '/functions/v1/admin') {
+      const uid = userOf(headers);
+      if (!uid) return json(401, { error: 'needs_login' });
+      const me = [...users.values()].find((x) => x.id === uid);
+      const tid = me?.meta?.telegram_id ? Number(me.meta.telegram_id) : null;
+      const isAdmin = tid !== null && adminIds.has(tid);
+      const d = data();
+      const name = me?.meta?.display_name || me?.email || '';
+      if (d.action === 'whoami') return json(200, { admin: isAdmin, name, configured: adminIds.size > 0 });
+      if (!opts.adminReady) return json(503, { error: 'admin_not_ready' });
+      const send = (chat, text, photo) => {
+        if (blockingIds.has(Number(chat))) return false;
+        botMessages.push({ chat_id: Number(chat), text, photo: !!photo }); return true;
+      };
+      const html = (t) => String(t ?? '').trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\*\*([^*\n][^*]*?)\*\*/g, '<b>$1</b>').replace(/__([^_\n][^_]*?)__/g, '<i>$1</i>');
+      const run = (b) => {
+        if (!['sending', 'paused'].includes(b.status)) return;
+        b.status = 'sending';
+        let n = 0;
+        for (const s of subscribers.filter((x) => !x.blocked && x.telegram_id > b.cursor).sort((a, c) => a.telegram_id - c.telegram_id)) {
+          if (n++ >= opts.broadcastPerRun) { b.status = 'paused'; return; }
+          if (s.telegram_id === b.admin_telegram_id) { b.sent++; b.cursor = s.telegram_id; continue; } // got the preview already
+          if (send(s.telegram_id, b.text, b.photo_file_id)) b.sent++; else { b.blocked++; s.blocked = true; }
+          b.cursor = s.telegram_id;
+        }
+        b.status = 'done'; b.finished_at = new Date().toISOString();
+      };
+      if (d.action === 'feedback') {
+        const message = String(d.message ?? '').trim();
+        if (!message) return json(400, { error: 'bad_request' });
+        if (feedback.filter((f) => f.user_id === uid).length >= 5) return json(429, { error: 'rate_limited' });
+        feedback.unshift({ id: nextId('f'), user_id: uid, telegram_id: tid, name, message, status: 'new', created_at: new Date().toISOString() });
+        for (const a of adminIds) send(a, `💬 Yangi fikr — ${name}\n\n${message}`);
+        return json(200, { ok: true });
+      }
+      if (!isAdmin) return json(403, { error: 'not_admin' });
+      switch (d.action) {
+        case 'stats': {
+          const day = (x) => String(x).slice(0, 10);
+          const days = [...Array(Number(d.days) || 14)].map((_, i) => { const t = new Date(Date.now() - (Number(d.days || 14) - 1 - i) * 86400000).toISOString().slice(0, 10); return t; });
+          return json(200, {
+            users: users.size, users_telegram: [...users.values()].filter((u) => u.meta?.telegram_id).length, users_new_7d: users.size,
+            active_7d: new Set(events.map((e) => e.user_id)).size, books: books.length, chapters: chapters.length, books_new_7d: books.length,
+            storage_bytes: assets.reduce((n, a) => n + (a.size_bytes || 0), 0), subscribers: subscribers.length, subscribers_active: subscribers.filter((x) => !x.blocked).length,
+            exports_7d: events.filter((e) => e.kind === 'export').length,
+            exports_by_format: events.filter((e) => e.kind === 'export').reduce((o, e) => ({ ...o, [e.detail]: (o[e.detail] || 0) + 1 }), {}),
+            feedback_new: feedback.filter((f) => f.status === 'new').length,
+            daily: days.map((t) => ({ day: t, users: t === day(new Date().toISOString()) ? users.size : 0, books: books.filter((b) => day(b.created_at) === t).length, active: new Set(events.filter((e) => day(e.created_at) === t).map((e) => e.user_id)).size, subscribers: 0 })),
+          });
+        }
+        case 'users': {
+          const q = String(d.search ?? '').toLowerCase();
+          const list = [...users.values()].filter((u) => !q || (u.email + ' ' + (u.meta?.display_name ?? '')).toLowerCase().includes(q)).map((u) => ({
+            id: u.id, email: u.email, display_name: u.meta?.display_name ?? '', telegram_id: u.meta?.telegram_id ?? null, telegram_username: null,
+            created_at: new Date().toISOString(), last_sign_in_at: null, books: books.filter((b) => b.user_id === u.id).length, last_book_at: null,
+            subscribed: subscribers.some((s) => s.telegram_id === Number(u.meta?.telegram_id)), blocked: subscribers.some((s) => s.telegram_id === Number(u.meta?.telegram_id) && s.blocked),
+          }));
+          return json(200, { users: list });
+        }
+        case 'broadcast_test': case 'broadcast': case 'message_user': {
+          const text = html(d.text);
+          if (!text && !d.photo) return json(400, { error: 'empty_message' });
+          if (d.photo && !/^data:image\/(jpeg|png|webp|gif);base64,/.test(d.photo)) return json(400, { error: 'bad_photo' });
+          const target = d.action === 'message_user' ? Number(d.telegram_id) : tid;
+          if (!send(target, text, d.photo)) return json(409, { error: 'user_blocked_bot' });
+          if (d.action === 'message_user') { audit.unshift({ action: 'message_user', created_at: new Date().toISOString(), details: { telegram_id: target } }); return json(200, { ok: true }); }
+          if (d.action === 'broadcast_test') return json(200, { ok: true });
+          const b = { id: nextId('bc'), admin_telegram_id: tid, text, photo_file_id: d.photo ? 'file-1' : null, button_text: d.button_text || null, button_url: d.button_url || null, open_app_button: d.open_app !== false,
+            status: 'sending', total: subscribers.filter((x) => !x.blocked).length, sent: 0, failed: 0, blocked: 0, cursor: 0, created_at: new Date().toISOString(), finished_at: null };
+          broadcasts.unshift(b);
+          audit.unshift({ action: 'broadcast', created_at: new Date().toISOString(), details: { id: b.id } });
+          run(b);
+          return json(200, { broadcast: structuredClone(b) });
+        }
+        case 'broadcast_resume': { const b = broadcasts.find((x) => x.id === d.id); if (b) run(b); return json(200, { ok: true }); }
+        case 'broadcast_cancel': { const b = broadcasts.find((x) => x.id === d.id); if (b && ['sending', 'paused'].includes(b.status)) b.status = 'cancelled'; return json(200, { ok: true }); }
+        case 'broadcast_status': return json(200, { broadcast: structuredClone(broadcasts.find((x) => x.id === d.id) ?? null) });
+        case 'broadcasts': return json(200, { broadcasts: structuredClone(broadcasts) });
+        case 'announce': {
+          const text = String(d.text ?? '').trim();
+          if (!text) return json(400, { error: 'bad_request' });
+          announcements.forEach((a) => { a.active = false; });
+          const a = { id: nextId('an'), text, link_url: d.link_url || null, tone: d.tone || 'info', active: true, created_at: new Date().toISOString(), expires_at: null };
+          announcements.unshift(a);
+          return json(200, { announcement: a });
+        }
+        case 'announcements': return json(200, { announcements: structuredClone(announcements) });
+        case 'announce_off': { const a = announcements.find((x) => x.id === d.id); if (a) a.active = false; return json(200, { ok: true }); }
+        case 'feedback_list': return json(200, { feedback: structuredClone(feedback) });
+        case 'feedback_read': { const f = feedback.find((x) => x.id === d.id); if (f && f.status === 'new') f.status = 'read'; return json(200, { ok: true }); }
+        case 'feedback_reply': {
+          const f = feedback.find((x) => x.id === d.id);
+          if (!f || !String(d.text ?? '').trim()) return json(400, { error: 'bad_request' });
+          if (!f.telegram_id) return json(409, { error: 'no_telegram' });
+          if (!send(f.telegram_id, `Bookly jamoasi javobi\n\n${html(d.text)}`)) return json(409, { error: 'user_blocked_bot' });
+          f.status = 'answered';
+          return json(200, { ok: true });
+        }
+        case 'audit': return json(200, { audit: structuredClone(audit) });
+        default: return json(400, { error: 'bad_request' });
+      }
+    }
     if (path === '/functions/v1/wipe-books') {
       // Mirrors supabase/functions/wipe-books + bookly_wipe_start/confirm (5 min, 5 attempts, single use).
       const uid = userOf(headers);
@@ -169,11 +277,16 @@ export function createFakeSupabase({ requireConfirmation = false, aiConfigured =
       return json(200, pub(user));
     }
 
+    if (path === '/rest/v1/announcements' && method === 'GET') {
+      if (!opts.adminReady) return json(404, { code: '42P01', message: 'relation "public.announcements" does not exist' });
+      return json(200, structuredClone(announcements.filter((a) => a.active)));
+    }
     // ----------------------------------------------------------- everything below needs a user (RLS)
     if (!uid) return json(401, { code: 'PGRST301', message: 'JWT expired' });
 
     if (path.startsWith('/rest/v1/rpc/')) {
       const fn = path.slice('/rest/v1/rpc/'.length);
+      if (fn === 'bookly_log_event') { if (uid) events.push({ user_id: uid, kind: data().p_kind, detail: data().p_detail ?? null, created_at: new Date().toISOString() }); return { status: 204, headers: {}, body: '' }; }
       if (fn === 'bookly_push_book') return json(200, pushBook(uid, data()));
       if (fn === 'bookly_pull_book') return json(200, pullBook(uid, data().p_local_id));
       if (fn === 'bookly_cloud_usage') {
@@ -262,6 +375,7 @@ export function createFakeSupabase({ requireConfirmation = false, aiConfigured =
     handle, fetch: fakeFetch, log, sentFiles, aiCalls, wipeRequests, setWipeTtl: (ms) => { opts.wipeTtlMs = ms; },
     setOnline(v) { online = v; },
     confirm(email) { const u = users.get(email); if (u) u.confirmed = true; },
-    state: { users, books, chapters, assets, objects, sync },
+    state: { users, books, chapters, assets, objects, sync, subscribers, broadcasts, announcements, feedback, events, audit },
+    botMessages, blockingIds,
   };
 }

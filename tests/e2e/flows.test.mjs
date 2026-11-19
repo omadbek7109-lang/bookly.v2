@@ -733,6 +733,115 @@ test('every screen and every sheet follows the chosen interface design (no hard-
   await ctx.close();
 });
 
+test('Buki the robot: greets once, gives tips per screen, guided tour, hides while writing, can be muted or switched off', async () => {
+  const { ctx, page } = await newPage({ width: 360, height: 740 });
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('bookly.settings') || '{}'); s.robotIntroSeen = false; s.introSeen = true; localStorage.setItem('bookly.settings', JSON.stringify(s)); });
+  await page.reload(); await page.waitForSelector('.home');
+  await page.waitForSelector('[data-testid=robot-bubble]', { timeout: 5000 });
+  assert.match(await page.locator('[data-testid=robot-text]').innerText(), /Buki/);
+  await page.click('[data-testid=robot-close]');
+  await page.reload(); await page.waitForSelector('.home'); await page.waitForTimeout(1800);
+  assert.equal(await page.locator('[data-testid=robot-bubble]').count(), 0, 'greets only once');
+  // tips change with the screen and "another tip" cycles
+  await page.click('[data-testid=robot-button]');
+  const homeTip = await page.locator('[data-testid=robot-text]').innerText();
+  await page.click('[data-testid=robot-next]');
+  assert.notEqual(await page.locator('[data-testid=robot-text]').innerText(), homeTip);
+  const box = await page.locator('[data-testid=robot-bubble]').boundingBox();
+  assert.ok(box.x >= 0 && box.x + box.width <= 360 && box.y >= 0, `bubble fits a small phone: ${JSON.stringify(box)}`);
+  await page.screenshot({ path: path.join(OUT, 'robot-tip-360.png') });
+  await go(page, '#/books');
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-testid=robot-bubble]').count(), 0, 'bubble closes on a new screen');
+  await page.click('[data-testid=robot-button]');
+  assert.match(await page.locator('[data-testid=robot-text]').innerText(), /⋯|Qidiruv|Savat/);
+  await page.click('[data-testid=robot-close]');
+  // voice toggle: headless Chrome has no voices → says so instead of failing silently
+  await page.click('[data-testid=robot-button]');
+  await page.click('[data-testid=robot-voice]');
+  await page.click('[data-testid=robot-next]');
+  await page.waitForSelector('[data-testid=robot-bubble] small.muted');
+  await page.click('[data-testid=robot-voice]');
+  await page.click('[data-testid=robot-close]');
+  // guided tour: 6 steps, "Show me" opens the screen
+  await go(page, '#/profile');
+  await page.click('[data-testid=robot-tour]');
+  await page.waitForSelector('[data-testid=robot-bubble]');
+  for (let i = 1; i <= 6; i++) {
+    assert.match(await page.locator('.robot-bubble-head small').innerText(), new RegExp(`${i}/6`));
+    if (i === 4) { await page.click('[data-testid=robot-open]'); await page.waitForFunction(() => location.hash.startsWith('#/cover')); }
+    await page.click('[data-testid=robot-next]');
+  }
+  await page.waitForFunction(() => !document.querySelector('[data-testid=robot-bubble]'));
+  // hidden in the editor and reader (it would cover the text)
+  const id = await createBookFromText(page, 'Robot sinovi', 1);
+  assert.equal(await page.locator('[data-testid=robot]').count(), 0, 'no robot in the editor');
+  await go(page, `#/reader/${id}`);
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('[data-testid=robot]').count(), 0, 'no robot in the reader');
+  // switch off in Profile
+  await go(page, '#/profile');
+  await page.locator('[data-testid=robot-settings]').scrollIntoViewIfNeeded();
+  await page.click('label[for=rb-on]');
+  await page.waitForFunction(() => !document.querySelector('[data-testid=robot]'));
+  await page.reload(); await page.waitForSelector('.profile, [data-testid=robot-settings]');
+  assert.equal(await page.locator('[data-testid=robot]').count(), 0, 'stays off after reload');
+  await ctx.close();
+});
+
+test('help center: journey, searchable FAQ with “show me” buttons, tour, and a clear message when not signed in', async () => {
+  const { ctx, page } = await newPage({ width: 360, height: 740 });
+  await go(page, '#/profile');
+  await page.click('[data-testid=help]');
+  await page.waitForSelector('[data-testid=help-page]');
+  assert.equal(await page.locator('[data-testid=help-journey] li').count(), 4);
+  const all = await page.locator('[data-testid=help-faq] .faq-item').count();
+  assert.ok(all >= 12, `${all} questions`);
+  await page.fill('[data-testid=help-search]', 'muqova');
+  const found = await page.locator('[data-testid=help-faq] .faq-item').count();
+  assert.ok(found >= 1 && found < all, `search narrows the list (${found})`);
+  await page.locator('[data-testid=help-faq] .faq-q').first().click();
+  await page.waitForSelector('.faq-a');
+  await page.screenshot({ path: path.join(OUT, 'help-360.png'), fullPage: true });
+  await page.locator('.faq-a .btn').click();
+  await page.waitForFunction(() => location.hash.startsWith('#/cover'));
+  await go(page, '#/help');
+  await page.fill('[data-testid=help-search]', 'zzzz-yo‘q');
+  await page.waitForSelector('[data-testid=help-faq] .muted');
+  await page.fill('[data-testid=help-feedback]', 'Salom');
+  await page.click('[data-testid=help-feedback-send]');
+  await page.waitForSelector('.toast');
+  assert.match(await page.locator('.toast').last().innerText(), /kiring/);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  assert.ok(overflow <= 1, `help page overflows by ${overflow}px`);
+  await ctx.close();
+});
+
+test('writing goal: words typed in the editor fill today’s ring; goal can be changed; achievements unlock', async () => {
+  const { ctx, page } = await newPage({ width: 390, height: 844 });
+  await go(page, '#/profile');
+  await page.waitForSelector('[data-testid=writing-card]');
+  assert.equal(await page.locator('.goal-num').innerHTML(), '0');
+  assert.equal(await page.locator('[data-testid=achievements] li[data-got="1"]').count(), 0);
+  await page.click('[data-testid=fab-create]');
+  await page.click('[data-testid=create-blank]');
+  await page.click('[data-testid=new-create]');
+  await page.waitForSelector('[data-testid=editor]');
+  await page.locator('[data-testid=blocks] .editable').first().click();
+  await page.keyboard.type('Bugun men o‘n ikki so‘zdan iborat birinchi jumlamni yozdim va juda xursandman.');
+  await waitSaved(page);
+  await go(page, '#/profile');
+  await page.waitForSelector('[data-testid=writing-card]');
+  assert.equal(await page.locator('.goal-num').innerHTML(), '12', 'typed words are counted');
+  assert.equal(await page.locator('[data-testid=achievements] li[data-got="1"]').count(), 1, 'first book unlocked');
+  await page.locator('[data-testid=writing-card] [role=tab]').first().click(); // 150 words
+  await page.waitForFunction(() => document.querySelector('.goal-of')?.textContent?.includes('150'));
+  await page.reload(); await page.waitForSelector('[data-testid=writing-card]');
+  assert.match(await page.locator('.goal-of').innerHTML(), /150/, 'goal is saved');
+  await page.screenshot({ path: path.join(OUT, 'writing-card.png') });
+  await ctx.close();
+});
+
 test('About page: opens from profile, shows real feature status in every language', async () => {
   const { ctx, page } = await newPage({ width: 360, height: 740 });
   await go(page, '#/profile');

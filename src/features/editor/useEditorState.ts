@@ -1,3 +1,6 @@
+import { addWords } from '../../services/stats/writing';
+import { loadSettings } from '../../services/storage/settings';
+import { bookWordCount } from '../../models/book';
 /**
  * Editor state: the working copy of the book, undo/redo history (with typing coalescing)
  * and safe autosave with a visible status.
@@ -31,7 +34,10 @@ export function useEditorState(initial: Book) {
     setStatus('saving');
     saving.current = (async () => {
       try {
+        const before = savedRef.current;
         const saved = await books.save(snapshot);
+        // words typed today (only real typing counts: big jumps like pasting a whole book are ignored)
+        addWords(bookWordCount(snapshot) - bookWordCount(before), loadSettings().writingGoal);
         savedRef.current = snapshot;
         // keep updatedAt in sync without creating a history entry
         if (latest.current === snapshot) { latest.current = saved; savedRef.current = saved; setBook(saved); }

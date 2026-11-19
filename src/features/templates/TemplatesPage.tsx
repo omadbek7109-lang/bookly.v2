@@ -1,3 +1,4 @@
+import { track } from '../../services/stats/track';
 import { useMemo, useState } from 'react';
 import { useLibrary, useSettings, useUi } from '../../app/AppContext';
 import { back, navigate, routes } from '../../app/router';
@@ -44,6 +45,7 @@ export function TemplatesView() {
     }), tpl);
     book.cover = { ...templateCover(tpl, defaultCover(title, '')) };
     const saved = await books.save(book);
+    track('book_created', 'template');
     setPreview(null);
     navigate(routes.editor(saved.id));
   };

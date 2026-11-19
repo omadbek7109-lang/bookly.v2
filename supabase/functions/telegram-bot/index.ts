@@ -12,6 +12,7 @@
  * TELEGRAM_BOT_TOKEN lives only in Edge Function secrets; it is never returned or logged.
  */
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.49.4';
 import { verifyInitData } from './verify.ts';
 
 const APP_URL = Deno.env.get('BOOKLY_APP_URL') || 'https://omadbek7109-lang.github.io/bookly.v2/';
@@ -51,13 +52,13 @@ function welcome(name: string) {
   return [
     `Assalomu alaykum, <b>${esc(name)}</b>! 👋`,
     '',
-    '📚 <b>Bookly</b> — sun’iy intellekt yordamida elektron kitob yaratish ilovasi.',
+    '📚 <b>Bookly</b> — chiroyli elektron kitob tayyorlash studiyasi.',
     '',
-    '✍️ Kitob yozing va tahrirlang',
-    '🤖 AI yordamchi bilan boblar va g‘oyalar',
-    '🎨 Chiroyli muqova yarating',
+    '🧭 Kitob ustasi: nom, boblar va dizayn 3 qadamda',
+    '✍️ Qulay muharrir: rasm, jadval, iqtibos',
+    '🎨 Muqova va kitob uslubi — shablonlar bilan',
     '📄 PDF, EPUB, DOCX, PPTX formatida eksport',
-    '☁️ Kitoblaringiz Cloud’da xavfsiz saqlanadi',
+    '☁️ Kitoblaringiz internetda xavfsiz saqlanadi',
     '',
     'Tayyor fayllarni shu chatga ham yuborib beraman — ular shu yerda saqlanib qoladi.',
     '',
@@ -65,7 +66,27 @@ function welcome(name: string) {
   ].join('\n');
 }
 
+/** Remembers who talks to the bot, so admins can send them news (and knows who blocked the bot). */
+async function remember(update: Record<string, any>) {
+  const url = Deno.env.get('SUPABASE_URL'), key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !key) return;
+  const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  const cm = update.my_chat_member;
+  if (cm?.chat?.type === 'private' && cm.from?.id) {
+    const isBlocked = cm.new_chat_member?.status === 'kicked';
+    await db.from('bot_subscribers').upsert({ telegram_id: cm.from.id, first_name: (cm.from.first_name ?? '').slice(0, 128), username: cm.from.username ?? null,
+      blocked: isBlocked, blocked_at: isBlocked ? new Date().toISOString() : null, last_seen_at: new Date().toISOString() }, { onConflict: 'telegram_id' });
+    return;
+  }
+  const from = update.message?.from;
+  if (update.message?.chat?.type !== 'private' || !from?.id) return;
+  await db.from('bot_subscribers').upsert({ telegram_id: from.id, first_name: (from.first_name ?? '').slice(0, 128), username: from.username ?? null,
+    language_code: from.language_code ?? null, blocked: false, blocked_at: null, last_seen_at: new Date().toISOString() }, { onConflict: 'telegram_id' });
+}
+
 async function handleUpdate(token: string, update: Record<string, any>) {
+  // table may not exist yet (migration not applied): never let that break the bot's answers
+  await remember(update).catch((e) => console.error('subscriber save failed', e instanceof Error ? e.message : e));
   const msg = update.message;
   if (!msg?.chat?.id || msg.chat.type !== 'private') return;
   const text: string = msg.text ?? '';
@@ -77,7 +98,7 @@ async function handleUpdate(token: string, update: Record<string, any>) {
       '<b>Bookly yordam</b>',
       '',
       '1. «📖 Bookly’ni ochish» tugmasini bosing.',
-      '2. Yangi kitob yarating yoki shablon tanlang.',
+      '2. «+» → «Kitob ustasi»: nom, boblar va dizayn tanlang.',
       '3. Eksport bo‘limida PDF/EPUB/DOCX/PPTX ni tanlang.',
       '4. «Telegram’ga yuborish» ni bossangiz, fayl shu chatga keladi.',
       '',
@@ -95,11 +116,11 @@ async function setup(token: string, selfUrl: string) {
     const r = await tg(token, method, body);
     steps[name] = r.ok ? 'ok' : `${r.error_code}: ${r.description}`;
   };
-  await run('webhook', 'setWebhook', { url: selfUrl, secret_token: secret, allowed_updates: ['message'], drop_pending_updates: false });
+  await run('webhook', 'setWebhook', { url: selfUrl, secret_token: secret, allowed_updates: ['message', 'my_chat_member'], drop_pending_updates: false });
   await run('menu_button', 'setChatMenuButton', { menu_button: { type: 'web_app', text: 'Bookly', web_app: { url: APP_URL } } });
   await run('commands', 'setMyCommands', { commands: [{ command: 'start', description: 'Bookly’ni ochish' }, { command: 'help', description: 'Yordam' }] });
-  await run('short_description', 'setMyShortDescription', { short_description: 'AI yordamida elektron kitob yarating: yozing, muqova qiling, PDF/EPUB yuklab oling.' });
-  await run('description', 'setMyDescription', { description: 'Bookly — sun’iy intellekt yordamida elektron kitob yaratish ilovasi. Kitob yozing, muqova yarating va PDF, EPUB, DOCX, PPTX formatida yuklab oling. /start bosing va ilovani oching.' });
+  await run('short_description', 'setMyShortDescription', { short_description: 'Chiroyli elektron kitob tayyorlang: yozing, muqova qiling, PDF/EPUB yuklab oling.' });
+  await run('description', 'setMyDescription', { description: 'Bookly — chiroyli elektron kitob tayyorlash studiyasi. Kitob yozing, muqova yarating va PDF, EPUB, DOCX, PPTX formatida yuklab oling. /start bosing va ilovani oching.' });
   const info = await tg(token, 'getWebhookInfo', {});
   const r = info.result as Record<string, unknown> | undefined;
   return { steps, webhook: { url: r?.url, pending: r?.pending_update_count, last_error: r?.last_error_message ?? null } };
